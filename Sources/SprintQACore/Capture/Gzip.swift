@@ -3,7 +3,9 @@ import Foundation
 
 /// Gzip with Apple's raw DEFLATE, a gzip header and a CRC32; no dependency.
 public enum Gzip {
+    /// Nil for empty input or when DEFLATE fails.
     public static func compress(_ data: Data) -> Data? {
+        guard !data.isEmpty else { return nil }
         let capacity = data.count + data.count / 100 + 1024
         var deflated = Data(count: capacity)
         let written = deflated.withUnsafeMutableBytes { dst in
@@ -14,7 +16,7 @@ public enum Gzip {
                     nil, COMPRESSION_ZLIB)
             }
         }
-        guard written > 0 || data.isEmpty else { return nil }
+        guard written > 0 else { return nil }
         var out = Data([0x1f, 0x8b, 0x08, 0x00, 0, 0, 0, 0, 0x00, 0x03])
         out.append(deflated.prefix(written))
         out.append(contentsOf: littleEndian(crc32(data)))

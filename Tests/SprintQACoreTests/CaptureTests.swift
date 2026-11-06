@@ -48,6 +48,10 @@ final class CaptureTests: XCTestCase {
         XCTAssertEqual(full.telemetryCount, CaptureLog.cap)
     }
 
+    func testGzipRefusesEmptyInput() {
+        XCTAssertNil(Gzip.compress(Data()))
+    }
+
     func testCrc32KnownValue() {
         XCTAssertEqual(Gzip.crc32(Data("123456789".utf8)), 0xCBF4_3926)
     }
