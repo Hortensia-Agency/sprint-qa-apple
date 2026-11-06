@@ -2,7 +2,12 @@
 
 Sprint's QA widget for iOS and iPadOS apps: testers and reporters send bug reports from inside the app to a project in [Sprint](https://sprint.hortensia-agency.com). It is the native counterpart of `@sprint-logger/qa-rn` and talks to the same `/api/widget/*` routes.
 
-**Status: in development.** This release has the client and "Sign in with Sprint". The floating button and the report sheet come next; until then there is nothing for a person to tap.
+What a person gets:
+
+- A floating button they can drag anywhere, or onto Hide.
+- A report sheet: select an area of the screen and mark it up, record the screen with narration and trim it, add voice notes, pick a screenshot or recording from Photos.
+- For QA members, the queue: open a fixed task, watch its screenshots and videos, and Take, Verify or report Bug found. The Demo tab publishes walkthroughs to the project's demo library.
+- Debug capture with bug recordings, when the project turns it on: network calls, printed and logged lines, and screen changes, redacted as the web widget does.
 
 ## Requirements
 
@@ -40,9 +45,36 @@ let failure = await SprintQA.signIn()
 
 // The screen the person is on, matched against the project's hidden routes.
 SprintQA.route = "Checkout"
+
+// The person's own choice to hide the button, for a switch in your settings.
+SprintQA.isHidden = false
 ```
 
 The token is stored in the Keychain for this device only. `SprintQA.signOut()` forgets it.
+
+### Microphone
+
+Voice notes and narrated recordings appear only when Info.plist declares why the app uses the microphone. Without it iOS would end the app when the widget asked, so the widget leaves them out.
+
+```xml
+<key>NSMicrophoneUsageDescription</key>
+<string>Record voice notes for bug reports.</string>
+```
+
+### Screen recording
+
+Recording uses ReplayKit's in-app capture: it records your app only, and the first time iOS asks the person to allow it. The Simulator never delivers frames, so there the widget offers Choose a screen recording instead; check recording on a device. Reporters record at a lower quality so a two-minute clip fits their 20 MB upload limit.
+
+### Network capture
+
+`URLSession.shared` is captured while a bug video records. Add the capture to your own sessions:
+
+```swift
+let config = URLSessionConfiguration.default
+SprintQA.captureNetwork(in: config)
+```
+
+Auth headers, cookies, sensitive query values and token-shaped strings are redacted before upload, with the same rules as the web widget (Sprint's shared fixture is in `Tests/SprintQACoreTests/Fixtures/capture-redact-parity.json`).
 
 ## Customize
 
@@ -81,7 +113,11 @@ xcodebuild -scheme SprintQA -destination 'generic/platform=iOS Simulator' build
 swift scripts/generate-tokens.swift           # after updating tokens.json
 ```
 
-`tokens.json` is a copy of Sprint's design tokens; Sprint's own test suite fails when it drifts. `Example/` holds a demo app and a UI test that signs in against a Sprint dev server.
+`tokens.json` is a copy of Sprint's design tokens and `Tests/SprintQACoreTests/Fixtures/capture-redact-parity.json` a copy of Sprint's redaction cases; Sprint's own test suite fails when either drifts. `Example/` holds a demo app (launch arguments `-open`, `-reset`, `-rtl`) and a UI test that signs in against a Sprint dev server.
+
+```
+xcodebuild test -scheme SprintQA -destination 'platform=iOS Simulator,name=<device>' -only-testing:SprintQATests
+```
 
 ## License
 
