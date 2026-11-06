@@ -109,7 +109,7 @@ struct Bubble: View {
         .contentShape(Capsule())
         .gesture(
             DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                .onChanged { v in model.dragChanged(location: v.location, time: CACurrentMediaTime()) }
+                .onChanged { v in model.dragChanged(location: v.location, start: v.startLocation, time: CACurrentMediaTime()) }
                 .onEnded { _ in if model.dragEnded() { model.open() } }
         )
         .accessibilityElement(children: .ignore)

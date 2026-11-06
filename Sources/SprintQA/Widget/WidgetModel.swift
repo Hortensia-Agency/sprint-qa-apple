@@ -119,6 +119,8 @@ final class WidgetModel: ObservableObject {
     private var noticeTask: Task<Void, Never>?
     private var history: [(t: TimeInterval, p: BubbleLayout.Point)] = []
     private var grab = BubbleLayout.Point(x: 0, y: 0)
+    /// Where the current touch began; a different one means a new touch.
+    private var touchStart: CGPoint?
     private var styleChanges: AnyCancellable?
     private var backgrounding: AnyCancellable?
 
@@ -232,12 +234,17 @@ final class WidgetModel: ObservableObject {
         position = layout.rest(side: side, fraction: stored?.y ?? 0.72)
     }
 
-    func dragChanged(location: CGPoint, time: TimeInterval) {
+    func dragChanged(location: CGPoint, start: CGPoint, time: TimeInterval) {
         guard let layout else { return }
-        if !dragging {
+        // Set up once per touch, from where it began. Redoing this on every
+        // update before the threshold measured each move from itself, so a
+        // drag never got past 8 points.
+        if touchStart != start {
+            touchStart = start
             driver.stop()
+            dragging = false
             let p = position ?? layout.rest(side: 1, fraction: 0.72)
-            grab = .init(x: location.x - p.x, y: location.y - p.y)
+            grab = .init(x: start.x - p.x, y: start.y - p.y)
             history = [(time, p)]
             pressed = true
         }
@@ -257,6 +264,7 @@ final class WidgetModel: ObservableObject {
     /// Returns true when the touch was a tap rather than a drag.
     func dragEnded() -> Bool {
         pressed = false
+        touchStart = nil
         guard dragging, let layout, let p = position else {
             dragging = false
             return true
