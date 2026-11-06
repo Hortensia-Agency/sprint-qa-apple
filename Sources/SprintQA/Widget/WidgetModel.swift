@@ -38,9 +38,18 @@ struct DemoDraft: Equatable {
     var clip: VideoClip?
 }
 
+/// A recording's gzipped debug capture, uploaded after its video.
+struct CaptureSidecar: Equatable {
+    var gzip: Data
+    var startedAt: Int64
+    var durationMs: Int
+    var telemetryCount: Int
+    var truncated: Bool
+}
+
 enum PendingUpload: Equatable {
     case file(SprintQAClient.AttachmentKind, Data, filename: String, mimeType: String)
-    case video(VideoClip, trim: ClosedRange<Double>?)
+    case video(VideoClip, trim: ClosedRange<Double>?, capture: CaptureSidecar?)
 }
 
 struct SentResult: Equatable {
@@ -55,7 +64,9 @@ struct SentResult: Equatable {
 final class WidgetModel: ObservableObject {
     @Published private(set) var config: WidgetConfig?
     @Published private(set) var me: WidgetMe?
-    @Published var route: String?
+    @Published var route: String? {
+        didSet { if let route, route != oldValue { debugCapture?.log.navigation(route) } }
+    }
     @Published var hidden: Bool
     @Published var sheetShown = false
     @Published var screen: SheetScreen = .launcher
@@ -82,6 +93,8 @@ final class WidgetModel: ObservableObject {
     var noticeFrame: CGRect = .zero
     var recordBarFrame: CGRect = .zero
     let recorder = ScreenRecorder()
+    private var debugCapture: DebugCapture?
+    private var sidecar: CaptureSidecar?
 
     let client: SprintQAClient
     let configuration: SprintQA.Configuration
@@ -425,6 +438,7 @@ final class WidgetModel: ObservableObject {
         draft = nil
         if let clip { try? FileManager.default.removeItem(at: clip.url) }
         clip = nil
+        sidecar = nil
         clearNotes()
     }
 
@@ -452,6 +466,10 @@ final class WidgetModel: ObservableObject {
     func beginRecording() {
         guard case .countdown(let target) = capture else { return }
         recorder.arm()
+        if target == .bug, config?.captureEnabled == true {
+            debugCapture = DebugCapture(sprintOrigin: client.origin)
+            if let route { debugCapture?.log.navigation(route) }
+        }
         capture = .recording(target, startedAt: Date())
         // The host keeps its keyboard while it is recorded.
         previousKeyWindow?.makeKey()
@@ -467,6 +485,8 @@ final class WidgetModel: ObservableObject {
     func stopRecording() {
         guard case .recording(let target, _) = capture else { return }
         drawingOnScreen = false
+        let finished = debugCapture?.finish()
+        debugCapture = nil
         Task {
             let recorded = await recorder.stop()
             capture = nil
@@ -481,6 +501,10 @@ final class WidgetModel: ObservableObject {
             case .bug:
                 startReview()
                 clip = recorded
+                sidecar = finished.map {
+                    CaptureSidecar(gzip: $0.gzip, startedAt: $0.payload.startedAt, durationMs: $0.payload.durationMs,
+                                   telemetryCount: $0.payload.telemetryCount, truncated: $0.payload.truncated)
+                }
                 screen = .review
                 detent = .large
             case .demo:
@@ -522,7 +546,7 @@ final class WidgetModel: ObservableObject {
         guard !trimmed.isEmpty else { return t(.summaryRequired) }
         // Flattened before the report, so the file is what the person saw.
         var uploads = draft.map(attachments) ?? []
-        if let clip { uploads.append(.video(clip, trim: trim)) }
+        if let clip { uploads.append(.video(clip, trim: trim, capture: sidecar)) }
         for n in notes {
             if let data = try? Data(contentsOf: n.url) {
                 uploads.append(.file(.audioNote, data, filename: "voice-note.m4a", mimeType: "audio/mp4"))
@@ -559,10 +583,11 @@ final class WidgetModel: ObservableObject {
         draft = nil
         clearNotes()
         // A clip that didn't upload stays on disk for Retry.
-        if let clip, !failed.contains(where: { if case .video = $0 { return true } else { return false } }) {
+        if let clip, !failed.contains(where: { if case .video = $0 { true } else { false } }) {
             try? FileManager.default.removeItem(at: clip.url)
         }
         clip = nil
+        sidecar = nil
         withAnimation(.easeOut(duration: 0.2)) {
             screen = .sent(.init(taskId: report.bugTaskId, held: report.held ?? false, failed: failed))
             detent = .medium
@@ -595,8 +620,9 @@ final class WidgetModel: ObservableObject {
                 switch u {
                 case let .file(kind, data, filename, mimeType):
                     _ = try await client.uploadAttachment(taskId: taskId, kind: kind, data: data, filename: filename, mimeType: mimeType)
-                case let .video(clip, trim):
-                    _ = try await uploadVideo(clip, trim: trim, taskId: taskId)
+                case let .video(clip, trim, capture):
+                    let id = try await uploadVideo(clip, trim: trim, taskId: taskId)
+                    if let capture { try? await uploadCapture(capture, taskId: taskId, videoId: id) }
                 }
                 return true
             } catch {
@@ -616,6 +642,18 @@ final class WidgetModel: ObservableObject {
                                                    durationSec: clip.duration.rounded(), trimStart: trim.map { tenth($0.lowerBound) },
                                                    trimEnd: trim.map { tenth($0.upperBound) })
         return rec.id
+    }
+
+    /// The capture rides along with its video; losing it only loses the tracks.
+    private func uploadCapture(_ c: CaptureSidecar, taskId: Int, videoId: Int) async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("sprintqa-capture-\(c.startedAt).json.gz")
+        try c.gzip.write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let p = try await client.presignCapture(taskId: taskId, sizeBytes: c.gzip.count)
+        try await client.put(fileAt: file, to: p.uploadUrl, mimeType: "application/gzip")
+        try await client.recordCapture(.init(taskId: taskId, captureObjectKey: p.objectKey, videoAttachmentId: videoId,
+                                             startedAtEpochMs: c.startedAt, durationMs: c.durationMs, eventCount: 0,
+                                             telemetryCount: c.telemetryCount, truncated: c.truncated))
     }
 
     func retryUpload(_ result: SentResult) async {

@@ -126,6 +126,18 @@ public final class SprintQAClient: @unchecked Sendable {
         public var eventCount: Int
         public var telemetryCount: Int
         public var truncated: Bool
+
+        public init(taskId: Int, captureObjectKey: String, videoAttachmentId: Int?, startedAtEpochMs: Int64,
+                    durationMs: Int, eventCount: Int, telemetryCount: Int, truncated: Bool) {
+            self.taskId = taskId
+            self.captureObjectKey = captureObjectKey
+            self.videoAttachmentId = videoAttachmentId
+            self.startedAtEpochMs = startedAtEpochMs
+            self.durationMs = durationMs
+            self.eventCount = eventCount
+            self.telemetryCount = telemetryCount
+            self.truncated = truncated
+        }
     }
 
     /// Links an uploaded capture to the task and, when there is one, its video.

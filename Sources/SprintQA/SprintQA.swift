@@ -112,6 +112,13 @@ public enum SprintQA {
         }
     }
 
+    /// Adds the widget's network capture to one of your own session
+    /// configurations; URLSession.shared is covered already. It only records
+    /// while a tester's bug video records, and redacts as the web widget does.
+    public static func captureNetwork(in configuration: URLSessionConfiguration) {
+        configuration.protocolClasses = [CaptureURLProtocol.self] + (configuration.protocolClasses ?? [])
+    }
+
     public static func signOut() {
         storage.pat = nil
         client?.pat = nil

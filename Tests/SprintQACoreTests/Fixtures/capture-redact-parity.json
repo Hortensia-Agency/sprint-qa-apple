@@ -1,0 +1,128 @@
+{
+  "redactTokens": [
+    [
+      "hello world 123",
+      "hello world 123"
+    ],
+    [
+      "order-42",
+      "order-42"
+    ],
+    [
+      "bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+      "bearer •redacted•"
+    ],
+    [
+      "key=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "key=•redacted•"
+    ],
+    [
+      "id xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "id xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    [
+      "a_b-Z9Z9Z9Z9Z9Z9Z9Z9Z9Z9Z9Z9Z9Z9Z9Z9 tail",
+      "•redacted• tail"
+    ],
+    [
+      "",
+      ""
+    ],
+    [
+      "naïve café",
+      "naïve café"
+    ]
+  ],
+  "redactUrl": [
+    [
+      "https://app.example.com/api/orders?status=paid&token=abc123secretvalue&page=2",
+      "https://app.example.com/api/orders?status=paid&token=%E2%80%A2redacted%E2%80%A2&page=2"
+    ],
+    [
+      "https://x.example.com/cb#access_token=zzz",
+      "https://x.example.com/cb"
+    ],
+    [
+      "https://x.example.com/a/b?q=1",
+      "https://x.example.com/a/b?q=1"
+    ],
+    [
+      "/api/thing?secret=nope&ok=1",
+      "/api/thing?secret=%E2%80%A2redacted%E2%80%A2&ok=1"
+    ],
+    [
+      "https://API.Example.com:443/v1/users?api_key=k&name=Ada%20Lovelace",
+      "https://api.example.com/v1/users?api_key=%E2%80%A2redacted%E2%80%A2&name=Ada+Lovelace"
+    ],
+    [
+      "https://example.com:8443/path?code=123&state=xyz&Signature=s",
+      "https://example.com:8443/path?code=%E2%80%A2redacted%E2%80%A2&state=xyz&Signature=%E2%80%A2redacted%E2%80%A2"
+    ],
+    [
+      "https://example.com/search?q=a+b&sessionId=9",
+      "https://example.com/search?q=a+b&sessionId=%E2%80%A2redacted%E2%80%A2"
+    ],
+    [
+      "https://example.com/",
+      "https://example.com/"
+    ],
+    [
+      "https://example.com/plain",
+      "https://example.com/plain"
+    ],
+    [
+      "http://localhost:3000/graphql?op=getUser",
+      "http://localhost:3000/graphql?op=getUser"
+    ]
+  ],
+  "sanitizeHeaders": [
+    [
+      {
+        "Authorization": "Bearer abc",
+        "Cookie": "session=xyz",
+        "Content-Type": "application/json"
+      },
+      {
+        "Authorization": "•redacted•",
+        "Cookie": "•redacted•",
+        "Content-Type": "application/json"
+      }
+    ],
+    [
+      {
+        "X-Request-Id": "ffffffffffffffffffffffffffffffffffff",
+        "Accept": "*/*",
+        "set-cookie": "a=b"
+      },
+      {
+        "X-Request-Id": "•redacted•",
+        "Accept": "*/*",
+        "set-cookie": "•redacted•"
+      }
+    ],
+    [
+      {
+        "x-api-key": "k",
+        "User-Agent": "SprintQA-iOS/0.2.0"
+      },
+      {
+        "x-api-key": "•redacted•",
+        "User-Agent": "SprintQA-iOS/0.2.0"
+      }
+    ]
+  ],
+  "consoleArg": [
+    [
+      "plain message",
+      "plain message"
+    ],
+    [
+      "token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+      "token •redacted•"
+    ],
+    [
+      "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "•redacted•"
+    ]
+  ]
+}
