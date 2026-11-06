@@ -22,7 +22,7 @@ enum DeviceContext {
         return build.map { "\(v) (\($0))" } ?? v
     }
 
-    /// e.g. "SprintQA-iOS/0.2.0 (iPhone17,1; iOS 26.1) com.tapinn.app/4.2 (318)"
+    /// e.g. "SprintQA-iOS/0.2.1 (iPhone17,1; iOS 26.1) com.tapinn.app/4.2 (318)"
     static var userAgent: String {
         let device = UIDevice.current
         var ua = "SprintQA-iOS/\(SprintQA.version) (\(modelIdentifier); \(device.systemName) \(device.systemVersion))"

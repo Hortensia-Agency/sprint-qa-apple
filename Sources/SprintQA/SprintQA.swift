@@ -34,7 +34,7 @@ public enum SprintQA {
     }
 
     /// This package's version, sent in each report's user agent.
-    public static let version = "0.2.0"
+    public static let version = "0.2.1"
 
     static private(set) var configuration: Configuration?
     static private(set) var client: SprintQAClient?
