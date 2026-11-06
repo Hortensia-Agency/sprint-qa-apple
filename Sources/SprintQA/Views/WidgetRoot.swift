@@ -25,21 +25,34 @@ struct WidgetRoot: View {
                         .offset(x: p.x, y: p.y)
                         .transition(.opacity)
                 }
+                if let stage = model.capture {
+                    Group {
+                        switch stage {
+                        case .area(let image):
+                            AreaSelectView(palette: palette, image: image, insets: safeArea, onCancel: model.cancelArea, onPick: model.pickArea)
+                        case .markup(let d):
+                            MarkupEditor(palette: palette, image: d.image, crop: d.crop, marks: d.marks,
+                                         insets: safeArea, onCancel: model.cancelMarkup, onDone: model.finishMarkup)
+                        }
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .transition(.opacity)
+                }
                 if model.showHiddenNotice {
                     HiddenNotice(model: model, palette: palette)
                         .frame(maxHeight: .infinity, alignment: .bottom)
                         .padding(.horizontal, 16)
-                        .padding(.bottom, geo.safeAreaInsets.bottom + 12)
+                        .padding(.bottom, safeArea.bottom + 12)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
             .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.dragging)
             .animation(.easeOut(duration: 0.2), value: model.showHiddenNotice)
             .animation(.easeOut(duration: 0.15), value: model.bubbleVisible)
-            .onAppear { model.updateLayout(size: geo.size, insets: geo.safeAreaInsets) }
-            .onChange(of: geo.size) { _ in model.updateLayout(size: geo.size, insets: geo.safeAreaInsets) }
-            .onChange(of: geo.safeAreaInsets) { _ in model.updateLayout(size: geo.size, insets: geo.safeAreaInsets) }
-        }
+            .animation(.easeOut(duration: 0.2), value: model.capture == nil)
+            .onAppear { model.updateLayout(size: geo.size, insets: safeArea) }
+            .onChange(of: geo.size) { _ in model.updateLayout(size: geo.size, insets: safeArea) }
+                    }
         .ignoresSafeArea()
         .sheet(isPresented: $model.sheetShown, onDismiss: model.sheetDismissed) {
             WidgetSheet(model: model, style: style)
@@ -48,6 +61,12 @@ struct WidgetRoot: View {
         .preferredColorScheme(colorScheme(palette.interfaceStyle))
         .onChange(of: palette.interfaceStyle) { style in model.window?.overrideUserInterfaceStyle = style }
         .onAppear { model.window?.overrideUserInterfaceStyle = palette.interfaceStyle }
+    }
+
+    /// The window's insets: the root ignores the safe area, so its own reads zero.
+    private var safeArea: EdgeInsets {
+        let i = model.window?.safeAreaInsets ?? .zero
+        return EdgeInsets(top: i.top, leading: i.left, bottom: i.bottom, trailing: i.right)
     }
 
     private func colorScheme(_ style: UIUserInterfaceStyle) -> ColorScheme? {

@@ -13,6 +13,15 @@ final class OverlayWindow: UIWindow {
         if rootViewController?.presentedViewController != nil { return hit }
         return MainActor.assumeIsolated { model?.accepts(point) == true } ? hit : nil
     }
+
+    /// Insets are zero until the window is on screen; lay the bubble out again once they arrive.
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        let i = safeAreaInsets
+        MainActor.assumeIsolated {
+            model?.updateLayout(size: bounds.size, insets: EdgeInsets(top: i.top, leading: i.left, bottom: i.bottom, trailing: i.right))
+        }
+    }
 }
 
 /// Puts the overlay on the app's foreground scene, now or once one activates.

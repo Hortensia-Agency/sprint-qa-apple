@@ -14,7 +14,7 @@ struct WidgetSheet: View {
             switch model.screen {
             case .signIn: SignInScreen(model: model, palette: palette)
             case .launcher: LauncherScreen(model: model, palette: palette)
-            case .review(let image): ReviewScreen(model: model, palette: palette, screenshot: image)
+            case .review: ReviewScreen(model: model, palette: palette)
             case .sent(let result): SentScreen(model: model, palette: palette, result: result)
             }
         }
@@ -190,6 +190,11 @@ struct LauncherScreen: View {
                     .padding(.horizontal, 4)
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("\(t(.pageLabel)) \(model.route ?? "/")")
+                    if let message = model.launcherMessage {
+                        Text(message).font(palette.font(.subheadline)).foregroundStyle(palette.color(.destructive))
+                            .padding(.horizontal, 4)
+                            .transition(.opacity)
+                    }
                     VStack(spacing: 0) {
                         LaunchRow(palette: palette, symbol: "viewfinder", title: t(.takeScreenshot), subtitle: t(.takeScreenshotSub)) {
                             model.takeScreenshot()
@@ -259,14 +264,13 @@ private struct RowPress: ButtonStyle {
 struct ReviewScreen: View {
     @ObservedObject var model: WidgetModel
     let palette: Palette
-    let screenshot: UIImage?
 
     @State private var title = ""
     @State private var details = ""
     @State private var severity: Severity = .medium
     @State private var sending = false
     @State private var error: String?
-    @State private var keepScreenshot = true
+    @State private var editing = false
     @FocusState private var focus: Field?
 
     private enum Field { case title, details }
@@ -282,25 +286,57 @@ struct ReviewScreen: View {
             } trailing: { EmptyView() }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if let screenshot, keepScreenshot {
+                    if let draft = model.draft {
                         HStack(alignment: .top, spacing: 12) {
-                            Image(uiImage: screenshot).resizable().scaledToFill()
-                                .frame(width: 74, height: 132).clipped()
-                                .clipShape(RoundedRectangle(cornerRadius: palette.radius.medium + 4, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: palette.radius.medium + 4, style: .continuous).stroke(palette.color(.border)))
-                                .accessibilityLabel(t(.reviewScreenshot))
-                            Button(t(.remove)) { withAnimation(.easeOut(duration: 0.15)) { keepScreenshot = false } }
-                                .font(palette.font(.subheadline))
-                                .foregroundStyle(palette.color(.mutedForeground))
-                                .frame(minHeight: 44)
-                                .accessibilityLabel(t(.removeItem, ["item": t(.reviewScreenshot)]))
+                            Button { editing = true } label: {
+                                MarkedShot(image: draft.image, crop: draft.crop, marks: draft.marks)
+                                    .frame(width: thumb(draft.crop).width, height: thumb(draft.crop).height)
+                                    .clipShape(RoundedRectangle(cornerRadius: palette.radius.medium + 4, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: palette.radius.medium + 4, style: .continuous).stroke(palette.color(.border)))
+                                    .overlay(alignment: .bottomTrailing) {
+                                        Image(systemName: "pencil.tip.crop.circle")
+                                            .font(.system(size: 15, weight: .semibold))
+                                            .foregroundStyle(.white)
+                                            .padding(5)
+                                            .background(Circle().fill(Color.black.opacity(0.55)))
+                                            .padding(5)
+                                    }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(t(.reviewScreenshot))
+                            VStack(alignment: .leading, spacing: 0) {
+                                Button(t(.remove)) { withAnimation(.easeOut(duration: 0.15)) { model.draft = nil } }
+                                    .font(palette.font(.subheadline))
+                                    .foregroundStyle(palette.color(.mutedForeground))
+                                    .frame(minHeight: 44)
+                                    .accessibilityLabel(t(.removeItem, ["item": t(.reviewScreenshot)]))
+                            }
                         }
                         .padding(.bottom, 8)
+                        .fullScreenCover(isPresented: $editing) {
+                            MarkupEditor(palette: palette, image: draft.image, crop: draft.crop, marks: draft.marks,
+                                         onCancel: { editing = false },
+                                         onDone: { marks in
+                                             model.draft?.marks = marks
+                                             editing = false
+                                         })
+                        }
+                        if draft.isPartial {
+                            Toggle(t(.includeFullScreenshot), isOn: Binding(
+                                get: { model.draft?.includeFull ?? false },
+                                set: { model.draft?.includeFull = $0 }
+                            ))
+                            .font(palette.font(.subheadline))
+                            .foregroundStyle(palette.color(.mutedForeground))
+                            .tint(palette.color(.signal))
+                            .padding(.bottom, 4)
+                        }
                     }
                     label(t(.titleField))
                     TextField(t(.titlePlaceholder), text: $title)
                         .font(palette.font(.body))
                         .focused($focus, equals: .title)
+                        .onChange(of: title) { _ in if error != nil { withAnimation(.easeOut(duration: 0.15)) { error = nil } } }
                         .submitLabel(.next)
                         .onSubmit { focus = .details }
                         .padding(.horizontal, 12).frame(minHeight: 44)
@@ -347,7 +383,13 @@ struct ReviewScreen: View {
             }
             .scrollDismissesKeyboard(.interactively)
         }
-        .onAppear { if screenshot == nil { focus = .title } }
+        .onAppear { if model.draft == nil { focus = .title } }
+    }
+
+    /// The crop's own shape, at most 132 points on its long side.
+    private func thumb(_ crop: CGRect) -> CGSize {
+        let k = 132 / max(crop.width, crop.height)
+        return CGSize(width: crop.width * k, height: crop.height * k)
     }
 
     private var field: some View {
@@ -363,7 +405,7 @@ struct ReviewScreen: View {
 
     private func send() async {
         sending = true
-        let failure = await model.send(title: title, details: details, severity: severity, screenshot: keepScreenshot ? screenshot : nil)
+        let failure = await model.send(title: title, details: details, severity: severity)
         sending = false
         withAnimation(.easeOut(duration: 0.15)) { error = failure }
         if failure != nil, title.trimmingCharacters(in: .whitespaces).isEmpty { focus = .title }
@@ -447,7 +489,7 @@ struct SentScreen: View {
                     .font(palette.font(.title3, weight: .semibold))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 320)
-                if result.failedScreenshot != nil {
+                if !result.failed.isEmpty {
                     HStack(spacing: 10) {
                         Image(systemName: "exclamationmark.triangle").foregroundStyle(palette.color(.signal))
                         Text(t(.attachmentUploadFailed))

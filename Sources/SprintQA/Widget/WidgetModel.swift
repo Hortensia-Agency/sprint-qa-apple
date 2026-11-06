@@ -8,15 +8,28 @@ import UIKit
 enum SheetScreen: Equatable {
     case signIn
     case launcher
-    case review(UIImage?)
+    case review
     case sent(SentResult)
+}
+
+/// The full-screen steps of a screenshot, drawn over the host app.
+enum CaptureStage: Equatable {
+    case area(UIImage)
+    case markup(ShotDraft)
+}
+
+struct PendingUpload: Equatable {
+    var kind: SprintQAClient.AttachmentKind
+    var data: Data
+    var filename: String
+    var mimeType: String
 }
 
 struct SentResult: Equatable {
     var taskId: Int
     var held: Bool
-    /// A screenshot that didn't upload; the ticket exists, Retry sends it again.
-    var failedScreenshot: Data?
+    /// Attachments that didn't upload; the ticket exists, Retry sends them again.
+    var failed: [PendingUpload] = []
 }
 
 /// The widget's state and flows. One per app, owned by `SprintQA`.
@@ -36,6 +49,9 @@ final class WidgetModel: ObservableObject {
     @Published var pressed = false
     @Published var signInError: String?
     @Published var signingIn = false
+    @Published var capture: CaptureStage?
+    @Published var draft: ShotDraft?
+    @Published var launcherMessage: String?
 
     weak var window: OverlayWindow?
     var layout: BubbleLayout?
@@ -104,12 +120,12 @@ final class WidgetModel: ObservableObject {
     }
 
     var bubbleVisible: Bool {
-        config != nil && !hidden && !palette.hidden(on: route)
+        config != nil && capture == nil && !hidden && !palette.hidden(on: route)
     }
 
     /// Touches the overlay keeps; everything else reaches the host app.
     func accepts(_ point: CGPoint) -> Bool {
-        if sheetShown { return true }
+        if sheetShown || capture != nil { return true }
         if showHiddenNotice, noticeFrame.insetBy(dx: -8, dy: -8).contains(point) { return true }
         guard bubbleVisible, let p = position else { return false }
         let size = palette.bubbleSize
@@ -234,6 +250,7 @@ final class WidgetModel: ObservableObject {
     func open() {
         guard config != nil else { return }
         signInError = nil
+        launcherMessage = nil
         screen = client.hasPat ? .launcher : .signIn
         detent = .medium
         present()
@@ -241,15 +258,18 @@ final class WidgetModel: ObservableObject {
     }
 
     private func present() {
-        if !sheetShown {
-            // Remember the host's key window once per visit, not the overlay itself
-            // when the sheet comes back after a screenshot.
-            if previousKeyWindow == nil {
-                previousKeyWindow = window?.windowScene?.windows.first { $0.isKeyWindow && $0 !== window }
-            }
-            window?.makeKey()
-        }
+        if !sheetShown { takeKey() }
         sheetShown = true
+    }
+
+    /// The overlay needs the keyboard while the widget is up. Remember the host's
+    /// key window once per visit, not the overlay itself when the sheet comes
+    /// back after a screenshot.
+    private func takeKey() {
+        if previousKeyWindow == nil {
+            previousKeyWindow = window?.windowScene?.windows.first { $0.isKeyWindow && $0 !== window }
+        }
+        window?.makeKey()
     }
 
     func close() {
@@ -283,30 +303,65 @@ final class WidgetModel: ObservableObject {
     }
 
     func takeScreenshot() {
+        launcherMessage = nil
         afterDismiss = { [weak self] in
             guard let self else { return }
             // The sheet is gone; draw the host's windows only, never the overlay.
-            let image = Screenshot.capture(excluding: self.window)
-            self.screen = .review(image)
-            self.detent = .large
-            self.present()
+            guard let image = Screenshot.capture(excluding: self.window) else {
+                self.launcherMessage = self.palette.strings(.screenshotFailed)
+                self.present()
+                return
+            }
+            self.takeKey()
+            self.capture = .area(image)
         }
         close()
     }
 
+    func pickArea(_ crop: CGRect) {
+        guard case .area(let image) = capture else { return }
+        capture = .markup(ShotDraft(image: image, crop: crop))
+    }
+
+    func cancelArea() {
+        capture = nil
+        screen = .launcher
+        detent = .medium
+        present()
+    }
+
+    /// Cancel in the editor steps back to the area, with the same capture.
+    func cancelMarkup() {
+        guard case .markup(let d) = capture else { return }
+        capture = .area(d.image)
+    }
+
+    func finishMarkup(_ marks: [Mark]) {
+        guard case .markup(var d) = capture else { return }
+        d.marks = marks
+        draft = d
+        capture = nil
+        screen = .review
+        detent = .large
+        present()
+    }
+
     func writeItDown() {
+        draft = nil
         withAnimation(.easeOut(duration: 0.2)) {
-            screen = .review(nil)
+            screen = .review
             detent = .large
         }
     }
 
     // MARK: Sending
 
-    func send(title: String, details: String, severity: Severity, screenshot: UIImage?) async -> String? {
+    func send(title: String, details: String, severity: Severity) async -> String? {
         let t = palette.strings
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return t(.summaryRequired) }
+        // Flattened before the report, so the file is what the person saw.
+        let uploads = draft.map(attachments) ?? []
         let input = ReportInput(
             title: trimmed,
             description: details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : details,
@@ -331,20 +386,36 @@ final class WidgetModel: ObservableObject {
         } catch {
             return t(.reportFailed)
         }
-        let data = screenshot?.jpegData(compressionQuality: 0.85)
-        let uploaded = data == nil ? true : await upload(data!, taskId: report.bugTaskId)
+        var failed: [PendingUpload] = []
+        for u in uploads {
+            if !(await upload(u, taskId: report.bugTaskId)) { failed.append(u) }
+        }
+        draft = nil
         withAnimation(.easeOut(duration: 0.2)) {
-            screen = .sent(.init(taskId: report.bugTaskId, held: report.held ?? false, failedScreenshot: uploaded ? nil : data))
+            screen = .sent(.init(taskId: report.bugTaskId, held: report.held ?? false, failed: failed))
             detent = .medium
         }
         return nil
     }
 
+    /// The marked-up crop, shown first on the task, and the whole capture when
+    /// a crop leaves part of it out and the person asked for it too.
+    private func attachments(_ d: ShotDraft) -> [PendingUpload] {
+        var out: [PendingUpload] = []
+        if let png = d.flattened().pngData() {
+            out.append(.init(kind: .annotatedScreenshot, data: png, filename: "annotated-screenshot.png", mimeType: "image/png"))
+        }
+        if out.isEmpty || (d.isPartial && d.includeFull), let jpeg = d.image.jpegData(compressionQuality: 0.85) {
+            out.append(.init(kind: .screenshot, data: jpeg, filename: "screenshot.jpg", mimeType: "image/jpeg"))
+        }
+        return out
+    }
+
     /// Best effort, retried once; the ticket already exists either way.
-    private func upload(_ data: Data, taskId: Int) async -> Bool {
+    private func upload(_ u: PendingUpload, taskId: Int) async -> Bool {
         for attempt in 0..<2 {
             do {
-                _ = try await client.uploadAttachment(taskId: taskId, kind: .screenshot, data: data, filename: "screenshot.jpg", mimeType: "image/jpeg")
+                _ = try await client.uploadAttachment(taskId: taskId, kind: u.kind, data: u.data, filename: u.filename, mimeType: u.mimeType)
                 return true
             } catch {
                 if attempt == 0 { try? await Task.sleep(nanoseconds: 800_000_000) }
@@ -354,9 +425,11 @@ final class WidgetModel: ObservableObject {
     }
 
     func retryUpload(_ result: SentResult) async {
-        guard let data = result.failedScreenshot else { return }
-        let ok = await upload(data, taskId: result.taskId)
-        if ok { screen = .sent(.init(taskId: result.taskId, held: result.held, failedScreenshot: nil)) }
+        var still: [PendingUpload] = []
+        for u in result.failed {
+            if !(await upload(u, taskId: result.taskId)) { still.append(u) }
+        }
+        screen = .sent(.init(taskId: result.taskId, held: result.held, failed: still))
     }
 }
 #endif
