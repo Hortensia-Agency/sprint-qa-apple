@@ -51,6 +51,7 @@ final class WidgetModel: ObservableObject {
     @Published var signingIn = false
     @Published var capture: CaptureStage?
     @Published var draft: ShotDraft?
+    @Published var notes: [VoiceNote] = []
     @Published var launcherMessage: String?
 
     weak var window: OverlayWindow?
@@ -340,6 +341,7 @@ final class WidgetModel: ObservableObject {
         guard case .markup(var d) = capture else { return }
         d.marks = marks
         draft = d
+        clearNotes()
         capture = nil
         screen = .review
         detent = .large
@@ -348,6 +350,7 @@ final class WidgetModel: ObservableObject {
 
     func writeItDown() {
         draft = nil
+        clearNotes()
         withAnimation(.easeOut(duration: 0.2)) {
             screen = .review
             detent = .large
@@ -361,7 +364,12 @@ final class WidgetModel: ObservableObject {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return t(.summaryRequired) }
         // Flattened before the report, so the file is what the person saw.
-        let uploads = draft.map(attachments) ?? []
+        var uploads = draft.map(attachments) ?? []
+        for n in notes {
+            if let data = try? Data(contentsOf: n.url) {
+                uploads.append(.init(kind: .audioNote, data: data, filename: "voice-note.m4a", mimeType: "audio/mp4"))
+            }
+        }
         let input = ReportInput(
             title: trimmed,
             description: details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : details,
@@ -391,11 +399,17 @@ final class WidgetModel: ObservableObject {
             if !(await upload(u, taskId: report.bugTaskId)) { failed.append(u) }
         }
         draft = nil
+        clearNotes()
         withAnimation(.easeOut(duration: 0.2)) {
             screen = .sent(.init(taskId: report.bugTaskId, held: report.held ?? false, failed: failed))
             detent = .medium
         }
         return nil
+    }
+
+    private func clearNotes() {
+        for n in notes { try? FileManager.default.removeItem(at: n.url) }
+        notes = []
     }
 
     /// The marked-up crop, shown first on the task, and the whole capture when

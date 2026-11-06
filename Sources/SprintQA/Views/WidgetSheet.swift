@@ -271,6 +271,7 @@ struct ReviewScreen: View {
     @State private var sending = false
     @State private var error: String?
     @State private var editing = false
+    @StateObject private var recorder = VoiceRecorder()
     @FocusState private var focus: Field?
 
     private enum Field { case title, details }
@@ -362,6 +363,11 @@ struct ReviewScreen: View {
                             .frame(minHeight: 96)
                     }
                     .background(field)
+                    if VoiceRecorder.available {
+                        VoiceNotesSection(palette: palette, notes: $model.notes, recorder: recorder) { message in
+                            withAnimation(.easeOut(duration: 0.15)) { error = message }
+                        }
+                    }
                     if let route = model.route {
                         Text("\(t(.pageLabel)) \(route)")
                             .font(.system(.caption, design: .monospaced))
@@ -404,6 +410,7 @@ struct ReviewScreen: View {
     }
 
     private func send() async {
+        recorder.stop()
         sending = true
         let failure = await model.send(title: title, details: details, severity: severity)
         sending = false
