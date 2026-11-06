@@ -33,6 +33,11 @@ struct WidgetRoot: View {
                         case .markup(let d):
                             MarkupEditor(palette: palette, image: d.image, crop: d.crop, marks: d.marks,
                                          insets: safeArea, onCancel: model.cancelMarkup, onDone: model.finishMarkup)
+                        case .countdown:
+                            RecordCountdown(palette: palette, withMic: model.withMic && VoiceRecorder.available,
+                                            onDone: model.beginRecording, onCancel: model.cancelCountdown)
+                        case .recording(_, let startedAt):
+                            RecordBar(model: model, palette: palette, startedAt: startedAt, insets: safeArea)
                         }
                     }
                     .frame(width: geo.size.width, height: geo.size.height)

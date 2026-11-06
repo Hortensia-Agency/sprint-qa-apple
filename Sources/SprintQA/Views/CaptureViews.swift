@@ -326,6 +326,157 @@ struct MarkupEditor: View {
     }
 }
 
+// MARK: Recording
+
+/// 3, 2, 1 over the dimmed app, then hands over to the recording.
+struct RecordCountdown: View {
+    let palette: Palette
+    let withMic: Bool
+    let onDone: () -> Void
+    let onCancel: () -> Void
+    @State private var n = 3
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let t = palette.strings
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea()
+            VStack(spacing: 10) {
+                Text(t(.countdownTitle)).font(palette.font(.headline))
+                Text("\(max(n, 1))")
+                    .font(.system(size: 64, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .id(n)
+                    .transition(reduceMotion ? .identity : .opacity.combined(with: .scale(scale: 0.85)))
+                Text(withMic ? t(.countdownMic) : t(.countdownMuted))
+                    .font(palette.font(.subheadline)).foregroundStyle(palette.color(.mutedForeground))
+                Button(t(.cancel), action: onCancel)
+                    .font(palette.font(.body, weight: .semibold))
+                    .foregroundStyle(palette.color(.foreground))
+                    .frame(minWidth: 120, minHeight: 44)
+                    .background(Capsule().fill(palette.color(.bgElev2)))
+                    .padding(.top, 6)
+            }
+            .padding(24)
+            .frame(minWidth: 240)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(palette.color(.bgElev1)))
+            .accessibilityElement(children: .contain)
+        }
+        .task {
+            while n > 0 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.15)) { n -= 1 }
+            }
+            onDone()
+        }
+    }
+}
+
+/// The bar while the screen records: elapsed time, draw on screen, stop. It
+/// is part of the recording, as the web widget's bar is.
+struct RecordBar: View {
+    @ObservedObject var model: WidgetModel
+    let palette: Palette
+    let startedAt: Date
+    let insets: EdgeInsets
+
+    var body: some View {
+        let t = palette.strings
+        ZStack(alignment: .top) {
+            if model.drawingOnScreen { DrawOnScreen(palette: palette, insets: insets) { model.drawingOnScreen = false } }
+            HStack(spacing: 8) {
+                Circle().fill(Color.red).frame(width: 10, height: 10).padding(.leading, 8)
+                TimelineView(.periodic(from: startedAt, by: 0.5)) { ctx in
+                    Text(formatDuration(Int(ctx.date.timeIntervalSince(startedAt))))
+                        .font(.subheadline.weight(.semibold)).monospacedDigit()
+                        .foregroundStyle(.white)
+                        .accessibilityAddTraits(.updatesFrequently)
+                }
+                ToolButton(symbol: "pencil.tip", label: t(.annotate), on: model.drawingOnScreen) {
+                    model.drawingOnScreen.toggle()
+                }
+                Button(action: model.stopRecording) {
+                    HStack(spacing: 6) {
+                        RoundedRectangle(cornerRadius: 2).fill(Color.white).frame(width: 10, height: 10)
+                        Text(t(.stopShort)).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    }
+                    .fixedSize()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 40)
+                    .background(Capsule().fill(Color.red))
+                }
+                .accessibilityLabel(t(.stopShort))
+            }
+            .padding(4)
+            .background(Capsule().fill(Color(white: 0.1).opacity(0.85)))
+            .environment(\.colorScheme, .dark)
+            .background(GeometryReader { g in
+                Color.clear.onAppear { model.recordBarFrame = g.frame(in: .global) }
+                    .onChange(of: g.frame(in: .global)) { model.recordBarFrame = $0 }
+            })
+            .fixedSize()
+            .padding(.top, insets.top + 8)
+            .transition(.opacity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+/// Draw over the app while it records; leaving draw mode wipes the strokes.
+private struct DrawOnScreen: View {
+    let palette: Palette
+    let insets: EdgeInsets
+    let onDone: () -> Void
+    @State private var marks: [Mark] = []
+    @State private var current: Mark?
+    @State private var color = Mark.colors[0]
+
+    var body: some View {
+        let t = palette.strings
+        ZStack(alignment: .bottom) {
+            Canvas { ctx, _ in
+                ctx.withCGContext { MarkRenderer.draw(current.map { marks + [$0] } ?? marks, in: $0) }
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        if current == nil { current = Mark(tool: .pen, color: color, size: 4, points: [v.startLocation]) }
+                        current?.points.append(v.location)
+                    }
+                    .onEnded { _ in
+                        if let m = current, !m.isTrivial { marks.append(m) }
+                        current = nil
+                    }
+            )
+            CaptureBar {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 0) {
+                        ForEach(Mark.colors.indices, id: \.self) { i in
+                            let c = Mark.colors[i]
+                            Button { color = c } label: {
+                                Circle().fill(Color(uiColor: UIColor(c)))
+                                    .frame(width: 24, height: 24)
+                                    .overlay(Circle().stroke(Color.white.opacity(c == color ? 1 : 0.35), lineWidth: c == color ? 2.5 : 1))
+                                    .frame(width: 40, height: 44)
+                            }
+                            .accessibilityLabel(UIColor(c).accessibilityName)
+                            .accessibilityAddTraits(c == color ? .isSelected : [])
+                        }
+                    }
+                }
+                CapturePill(title: t(.clear)) { marks = [] }
+                CapturePill(title: t(.done), prominent: true, action: onDone)
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, max(insets.bottom, 8))
+        }
+        .ignoresSafeArea()
+    }
+}
+
 // MARK: Chrome
 
 /// The floating bar over a capture, solid under Reduce Transparency.

@@ -1,4 +1,5 @@
 #if os(iOS)
+import PhotosUI
 import SprintQACore
 import SwiftUI
 import UIKit
@@ -168,6 +169,10 @@ struct SignInScreen: View {
 struct LauncherScreen: View {
     @ObservedObject var model: WidgetModel
     let palette: Palette
+    @State private var photo: PhotosPickerItem?
+    @State private var movie: PhotosPickerItem?
+    @State private var pickingPhoto = false
+    @State private var pickingMovie = false
 
     var body: some View {
         let t = palette.strings
@@ -175,39 +180,98 @@ struct LauncherScreen: View {
             SheetBar(title: sheetTitle(model, palette), palette: palette) {
                 CloseButton(palette: palette) { model.close() }
             } trailing: { EmptyView() }
+            if !model.reportOnly {
+                Picker("", selection: $model.tab) {
+                    Text(t(.tabReport)).tag(SheetTab.report)
+                    Text(t(.tabDemo)).tag(SheetTab.demo)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
+            }
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if let intro = t.own(.intro) {
-                        Text(intro).font(palette.font(.subheadline)).foregroundStyle(palette.color(.mutedForeground))
+                Group {
+                    if model.tab == .demo && !model.reportOnly {
+                        DemoScreen(model: model, palette: palette)
+                    } else {
+                        report
                     }
-                    HStack {
-                        Text(model.route ?? "/").lineLimit(1)
-                        Spacer()
-                        Text(viewportLabel)
-                    }
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(palette.color(.subtleForeground))
-                    .padding(.horizontal, 4)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(t(.pageLabel)) \(model.route ?? "/")")
-                    if let message = model.launcherMessage {
-                        Text(message).font(palette.font(.subheadline)).foregroundStyle(palette.color(.destructive))
-                            .padding(.horizontal, 4)
-                            .transition(.opacity)
-                    }
-                    VStack(spacing: 0) {
-                        LaunchRow(palette: palette, symbol: "viewfinder", title: t(.takeScreenshot), subtitle: t(.takeScreenshotSub)) {
-                            model.takeScreenshot()
-                        }
-                        Divider().padding(.leading, 58)
-                        LaunchRow(palette: palette, symbol: "square.and.pencil", title: t(.tabReport), subtitle: t(.detailsPlaceholder)) {
-                            model.writeItDown()
-                        }
-                    }
-                    .background(RoundedRectangle(cornerRadius: palette.radius.large + 6, style: .continuous).fill(palette.color(.bgElev2)))
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
+            }
+        }
+        .photosPicker(isPresented: $pickingPhoto, selection: $photo, matching: .images)
+        .photosPicker(isPresented: $pickingMovie, selection: $movie, matching: .videos)
+        .onChange(of: photo) { item in
+            guard let item else { return }
+            photo = nil
+            Task {
+                guard let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else {
+                    model.launcherMessage = t(.screenshotFailed)
+                    return
+                }
+                model.usePhoto(image)
+            }
+        }
+        .onChange(of: movie) { item in
+            guard let item else { return }
+            movie = nil
+            Task {
+                let picked = try? await item.loadTransferable(type: PickedMovie.self)
+                model.useVideo(await picked.asyncMap { await VideoClip.from($0.url) } ?? nil)
+            }
+        }
+    }
+
+    private var report: some View {
+        let t = palette.strings
+        let recordable = ScreenRecorder.available
+        return VStack(alignment: .leading, spacing: 12) {
+            if let intro = t.own(.intro) {
+                Text(intro).font(palette.font(.subheadline)).foregroundStyle(palette.color(.mutedForeground))
+            }
+            HStack {
+                Text(model.route ?? "/").lineLimit(1)
+                Spacer()
+                Text(viewportLabel)
+            }
+            .font(.system(.caption, design: .monospaced))
+            .foregroundStyle(palette.color(.subtleForeground))
+            .padding(.horizontal, 4)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(t(.pageLabel)) \(model.route ?? "/")")
+            if let message = model.launcherMessage {
+                Text(message).font(palette.font(.subheadline)).foregroundStyle(palette.color(.destructive))
+                    .padding(.horizontal, 4)
+                    .transition(.opacity)
+            }
+            LaunchGroup(palette: palette) {
+                LaunchRow(palette: palette, symbol: "viewfinder", title: t(.takeScreenshot), subtitle: t(.takeScreenshotSub)) {
+                    model.takeScreenshot()
+                }
+                if recordable {
+                    Divider().padding(.leading, 58)
+                    LaunchRow(palette: palette, symbol: "record.circle", title: t(.recordVideo), subtitle: t(.recordVideoSub)) {
+                        model.startRecording(.bug)
+                    }
+                    MicToggle(model: model, palette: palette)
+                }
+                Divider().padding(.leading, 58)
+                LaunchRow(palette: palette, symbol: "square.and.pencil", title: t(.tabReport), subtitle: t(.detailsPlaceholder)) {
+                    model.writeItDown()
+                }
+            }
+            LaunchGroup(palette: palette) {
+                LaunchRow(palette: palette, symbol: "photo.on.rectangle", title: t(.choosePhoto), subtitle: t(.choosePhotoSub)) {
+                    pickingPhoto = true
+                }
+                if !recordable {
+                    Divider().padding(.leading, 58)
+                    LaunchRow(palette: palette, symbol: "film", title: t(.chooseVideo), subtitle: t(.chooseVideoSub)) {
+                        pickingMovie = true
+                    }
+                }
             }
         }
     }
@@ -215,6 +279,156 @@ struct LauncherScreen: View {
     private var viewportLabel: String {
         let b = model.window?.bounds ?? UIScreen.main.bounds
         return "\(Int(b.width)) × \(Int(b.height))"
+    }
+}
+
+private extension Optional {
+    func asyncMap<T>(_ f: (Wrapped) async -> T) async -> T? {
+        guard let self else { return nil }
+        return await f(self)
+    }
+}
+
+private struct LaunchGroup<Content: View>: View {
+    let palette: Palette
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 0) { content }
+            .background(RoundedRectangle(cornerRadius: palette.radius.large + 6, style: .continuous).fill(palette.color(.bgElev2)))
+    }
+}
+
+/// Narration for a recording; offered only when the host declared the microphone.
+private struct MicToggle: View {
+    @ObservedObject var model: WidgetModel
+    let palette: Palette
+
+    var body: some View {
+        if VoiceRecorder.available {
+            Toggle(palette.strings(.narrateWithMic), isOn: $model.withMic)
+                .font(palette.font(.subheadline))
+                .foregroundStyle(palette.color(.mutedForeground))
+                .tint(palette.color(.signal))
+                .padding(.leading, 58).padding(.trailing, 14)
+                .frame(minHeight: 44)
+        }
+    }
+}
+
+// MARK: Demo
+
+/// A short walkthrough for the project's demo library, recorded here.
+struct DemoScreen: View {
+    @ObservedObject var model: WidgetModel
+    let palette: Palette
+    @State private var publishing = false
+    @State private var message: (text: String, ok: Bool)?
+    @State private var movie: PhotosPickerItem?
+    @State private var pickingMovie = false
+
+    var body: some View {
+        let t = palette.strings
+        VStack(alignment: .leading, spacing: 0) {
+            Text(t(.demoIntro)).font(palette.font(.subheadline)).foregroundStyle(palette.color(.mutedForeground))
+            FieldLabel(palette: palette, text: t(.demoTitle))
+            TextField(t(.demoTitlePlaceholder), text: $model.demo.title)
+                .font(palette.font(.body))
+                .padding(.horizontal, 12).frame(minHeight: 44)
+                .background(FieldBackground(palette: palette))
+            FieldLabel(palette: palette, text: t(.demoDescription))
+            TextField(t(.demoDescriptionPlaceholder), text: $model.demo.details, axis: .vertical)
+                .font(palette.font(.body))
+                .lineLimit(3...6)
+                .padding(.horizontal, 12).padding(.vertical, 11)
+                .background(FieldBackground(palette: palette))
+            Group {
+                if let clip = model.demo.clip {
+                    HStack {
+                        Image(systemName: "film").foregroundStyle(palette.color(.mutedForeground))
+                        Text(t(.demoRecordingReady, ["time": formatDuration(Int(clip.duration))]))
+                            .font(palette.font(.subheadline)).monospacedDigit()
+                        Spacer()
+                        Button(t(.remove)) {
+                            try? FileManager.default.removeItem(at: clip.url)
+                            model.demo.clip = nil
+                        }
+                        .font(palette.font(.subheadline, weight: .medium))
+                        .foregroundStyle(palette.color(.destructive))
+                        .frame(minHeight: 44)
+                    }
+                    .padding(.horizontal, 12)
+                    .background(RoundedRectangle(cornerRadius: palette.radius.medium + 2, style: .continuous).fill(palette.color(.bgElev2)))
+                } else if ScreenRecorder.available {
+                    LaunchGroup(palette: palette) {
+                        LaunchRow(palette: palette, symbol: "record.circle", title: t(.recordVideo), subtitle: t(.demoIntro)) {
+                            message = nil
+                            model.startRecording(.demo)
+                        }
+                        MicToggle(model: model, palette: palette)
+                    }
+                } else {
+                    LaunchGroup(palette: palette) {
+                        LaunchRow(palette: palette, symbol: "film", title: t(.chooseVideo), subtitle: t(.chooseVideoSub)) {
+                            message = nil
+                            pickingMovie = true
+                        }
+                    }
+                }
+            }
+            .padding(.top, 14)
+            if let message {
+                Text(message.text).font(palette.font(.subheadline))
+                    .foregroundStyle(message.ok ? palette.color(.success) : palette.color(.destructive))
+                    .padding(.top, 12)
+                    .transition(.opacity)
+            }
+            PrimaryButton(title: t(.publishDemo), palette: palette, token: .signal, busy: publishing) {
+                Task {
+                    publishing = true
+                    let failure = await model.publishDemo()
+                    publishing = false
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        message = failure.map { ($0, false) } ?? (t(.demoPublished), true)
+                    }
+                }
+            }
+            .disabled(model.demo.clip == nil)
+            .opacity(model.demo.clip == nil ? 0.5 : 1)
+            .padding(.top, 16)
+        }
+        .photosPicker(isPresented: $pickingMovie, selection: $movie, matching: .videos)
+        .onChange(of: movie) { item in
+            guard let item else { return }
+            movie = nil
+            Task {
+                let picked = try? await item.loadTransferable(type: PickedMovie.self)
+                let clip = await picked.asyncMap { await VideoClip.from($0.url) } ?? nil
+                guard let clip, clip.sizeBytes <= VideoClip.maxBytes else {
+                    message = (t(.videoPickFailed), false)
+                    return
+                }
+                model.demo.clip = clip
+            }
+        }
+    }
+}
+
+private struct FieldLabel: View {
+    let palette: Palette
+    let text: String
+    var body: some View {
+        Text(text).font(palette.font(.footnote, weight: .medium)).foregroundStyle(palette.color(.mutedForeground))
+            .padding(.top, 14).padding(.bottom, 6).padding(.horizontal, 2)
+    }
+}
+
+private struct FieldBackground: View {
+    let palette: Palette
+    var body: some View {
+        RoundedRectangle(cornerRadius: palette.radius.medium + 2, style: .continuous)
+            .fill(palette.color(.input))
+            .overlay(RoundedRectangle(cornerRadius: palette.radius.medium + 2, style: .continuous).stroke(palette.color(.border)))
     }
 }
 
@@ -271,6 +485,7 @@ struct ReviewScreen: View {
     @State private var sending = false
     @State private var error: String?
     @State private var editing = false
+    @State private var trim: ClosedRange<Double>?
     @StateObject private var recorder = VoiceRecorder()
     @FocusState private var focus: Field?
 
@@ -279,7 +494,7 @@ struct ReviewScreen: View {
     var body: some View {
         let t = palette.strings
         VStack(spacing: 0) {
-            SheetBar(title: t(.tabReport), palette: palette) {
+            SheetBar(title: model.clip != nil ? t(.reviewVideo) : model.draft != nil ? t(.reviewScreenshot) : t(.tabReport), palette: palette) {
                 Button(t(.discard)) { model.close() }
                     .font(palette.font(.body))
                     .foregroundStyle(palette.color(.destructive))
@@ -287,6 +502,10 @@ struct ReviewScreen: View {
             } trailing: { EmptyView() }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+                    if let clip = model.clip {
+                        VideoReview(palette: palette, clip: clip, trim: $trim)
+                            .padding(.bottom, 4)
+                    }
                     if let draft = model.draft {
                         HStack(alignment: .top, spacing: 12) {
                             Button { editing = true } label: {
@@ -389,7 +608,7 @@ struct ReviewScreen: View {
             }
             .scrollDismissesKeyboard(.interactively)
         }
-        .onAppear { if model.draft == nil { focus = .title } }
+        .onAppear { if model.draft == nil && model.clip == nil { focus = .title } }
     }
 
     /// The crop's own shape, at most 132 points on its long side.
@@ -412,7 +631,7 @@ struct ReviewScreen: View {
     private func send() async {
         recorder.stop()
         sending = true
-        let failure = await model.send(title: title, details: details, severity: severity)
+        let failure = await model.send(title: title, details: details, severity: severity, trim: trim)
         sending = false
         withAnimation(.easeOut(duration: 0.15)) { error = failure }
         if failure != nil, title.trimmingCharacters(in: .whitespaces).isEmpty { focus = .title }

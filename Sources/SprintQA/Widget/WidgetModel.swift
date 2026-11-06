@@ -12,17 +12,35 @@ enum SheetScreen: Equatable {
     case sent(SentResult)
 }
 
-/// The full-screen steps of a screenshot, drawn over the host app.
+/// Where a screen recording goes once it stops.
+enum RecordTarget: Equatable {
+    case bug
+    case demo
+}
+
+/// The full-screen steps of a capture, drawn over the host app.
 enum CaptureStage: Equatable {
     case area(UIImage)
     case markup(ShotDraft)
+    case countdown(RecordTarget)
+    case recording(RecordTarget, startedAt: Date)
 }
 
-struct PendingUpload: Equatable {
-    var kind: SprintQAClient.AttachmentKind
-    var data: Data
-    var filename: String
-    var mimeType: String
+enum SheetTab: Hashable {
+    case report
+    case demo
+}
+
+/// A walkthrough for the project's demo library, from the Demo tab.
+struct DemoDraft: Equatable {
+    var title = ""
+    var details = ""
+    var clip: VideoClip?
+}
+
+enum PendingUpload: Equatable {
+    case file(SprintQAClient.AttachmentKind, Data, filename: String, mimeType: String)
+    case video(VideoClip, trim: ClosedRange<Double>?)
 }
 
 struct SentResult: Equatable {
@@ -53,10 +71,17 @@ final class WidgetModel: ObservableObject {
     @Published var draft: ShotDraft?
     @Published var notes: [VoiceNote] = []
     @Published var launcherMessage: String?
+    @Published var clip: VideoClip?
+    @Published var tab: SheetTab = .report
+    @Published var demo = DemoDraft()
+    @Published var withMic = false
+    @Published var drawingOnScreen = false
 
     weak var window: OverlayWindow?
     var layout: BubbleLayout?
     var noticeFrame: CGRect = .zero
+    var recordBarFrame: CGRect = .zero
+    let recorder = ScreenRecorder()
 
     let client: SprintQAClient
     let configuration: SprintQA.Configuration
@@ -70,6 +95,7 @@ final class WidgetModel: ObservableObject {
     private var history: [(t: TimeInterval, p: BubbleLayout.Point)] = []
     private var grab = BubbleLayout.Point(x: 0, y: 0)
     private var styleChanges: AnyCancellable?
+    private var backgrounding: AnyCancellable?
 
     init(configuration: SprintQA.Configuration, client: SprintQAClient, storage: WidgetStorage, style: SprintQAStyle) {
         self.configuration = configuration
@@ -81,6 +107,12 @@ final class WidgetModel: ObservableObject {
         styleChanges = style.$bubble.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async { self?.relayout(force: true) }
         }
+        // Leaving the app ends a recording; the clip so far is kept for review.
+        backgrounding = NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
+            .sink { [weak self] _ in
+                guard let self, case .recording = self.capture else { return }
+                self.stopRecording()
+            }
     }
 
     var palette: Palette { Palette(style: style, appearance: config?.appearance) }
@@ -120,12 +152,21 @@ final class WidgetModel: ObservableObject {
         }
     }
 
+    /// Reporters and clients get the report form alone; unknown identity counts as one.
+    var reportOnly: Bool {
+        guard let me else { return true }
+        return me.role == "reporter" || me.user.tier == "client"
+    }
+
     var bubbleVisible: Bool {
         config != nil && capture == nil && !hidden && !palette.hidden(on: route)
     }
 
     /// Touches the overlay keeps; everything else reaches the host app.
     func accepts(_ point: CGPoint) -> Bool {
+        if case .recording = capture {
+            return drawingOnScreen || recordBarFrame.insetBy(dx: -8, dy: -8).contains(point)
+        }
         if sheetShown || capture != nil { return true }
         if showHiddenNotice, noticeFrame.insetBy(dx: -8, dy: -8).contains(point) { return true }
         guard bubbleVisible, let p = position else { return false }
@@ -340,8 +381,8 @@ final class WidgetModel: ObservableObject {
     func finishMarkup(_ marks: [Mark]) {
         guard case .markup(var d) = capture else { return }
         d.marks = marks
+        startReview()
         draft = d
-        clearNotes()
         capture = nil
         screen = .review
         detent = .large
@@ -349,25 +390,142 @@ final class WidgetModel: ObservableObject {
     }
 
     func writeItDown() {
-        draft = nil
-        clearNotes()
+        startReview()
         withAnimation(.easeOut(duration: 0.2)) {
             screen = .review
             detent = .large
         }
     }
 
+    /// A screenshot from Photos goes straight to the report, whole.
+    func usePhoto(_ image: UIImage) {
+        startReview()
+        draft = ShotDraft(image: image, crop: CGRect(origin: .zero, size: image.size))
+        withAnimation(.easeOut(duration: 0.2)) {
+            screen = .review
+            detent = .large
+        }
+    }
+
+    func useVideo(_ picked: VideoClip?) {
+        guard let picked, picked.sizeBytes <= VideoClip.maxBytes else {
+            launcherMessage = palette.strings(.videoPickFailed)
+            return
+        }
+        startReview()
+        clip = picked
+        withAnimation(.easeOut(duration: 0.2)) {
+            screen = .review
+            detent = .large
+        }
+    }
+
+    /// A new report starts empty: no shot, clip or notes from the last one.
+    private func startReview() {
+        draft = nil
+        if let clip { try? FileManager.default.removeItem(at: clip.url) }
+        clip = nil
+        clearNotes()
+    }
+
+    // MARK: Recording
+
+    func startRecording(_ target: RecordTarget) {
+        launcherMessage = nil
+        afterDismiss = { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                do {
+                    try await self.recorder.start(withMic: self.withMic && VoiceRecorder.available)
+                } catch {
+                    self.launcherMessage = self.palette.strings(.captureBlocked)
+                    self.present()
+                    return
+                }
+                self.takeKey()
+                self.capture = .countdown(target)
+            }
+        }
+        close()
+    }
+
+    func beginRecording() {
+        guard case .countdown(let target) = capture else { return }
+        recorder.arm()
+        capture = .recording(target, startedAt: Date())
+        // The host keeps its keyboard while it is recorded.
+        previousKeyWindow?.makeKey()
+    }
+
+    func cancelCountdown() {
+        Task { await recorder.cancel() }
+        capture = nil
+        screen = .launcher
+        present()
+    }
+
+    func stopRecording() {
+        guard case .recording(let target, _) = capture else { return }
+        drawingOnScreen = false
+        Task {
+            let recorded = await recorder.stop()
+            capture = nil
+            guard let recorded else {
+                launcherMessage = palette.strings(.recordingFailed)
+                screen = .launcher
+                detent = .medium
+                present()
+                return
+            }
+            switch target {
+            case .bug:
+                startReview()
+                clip = recorded
+                screen = .review
+                detent = .large
+            case .demo:
+                if let old = demo.clip { try? FileManager.default.removeItem(at: old.url) }
+                demo.clip = recorded
+                tab = .demo
+                screen = .launcher
+                detent = .large
+            }
+            present()
+        }
+    }
+
+    /// Adds the walkthrough to the project's demo library. Nil on success.
+    func publishDemo() async -> String? {
+        let t = palette.strings
+        let title = demo.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return t(.demoNeedsTitle) }
+        guard let c = demo.clip else { return nil }
+        let details = demo.details.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let p = try await client.presignDemo(filename: c.filename, mimeType: c.mimeType, sizeBytes: c.sizeBytes)
+            try await client.put(fileAt: c.url, to: p.uploadUrl, mimeType: c.mimeType)
+            try await client.recordDemo(objectKey: p.objectKey, filename: c.filename, mimeType: c.mimeType,
+                                        durationSec: c.duration.rounded(), title: title, description: details.isEmpty ? nil : details)
+        } catch {
+            return t(.demoPublishFailed)
+        }
+        try? FileManager.default.removeItem(at: c.url)
+        demo = DemoDraft()
+        return nil
+    }
+
     // MARK: Sending
 
-    func send(title: String, details: String, severity: Severity) async -> String? {
+    func send(title: String, details: String, severity: Severity, trim: ClosedRange<Double>? = nil) async -> String? {
         let t = palette.strings
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return t(.summaryRequired) }
         // Flattened before the report, so the file is what the person saw.
         var uploads = draft.map(attachments) ?? []
+        if let clip { uploads.append(.video(clip, trim: trim)) }
         for n in notes {
             if let data = try? Data(contentsOf: n.url) {
-                uploads.append(.init(kind: .audioNote, data: data, filename: "voice-note.m4a", mimeType: "audio/mp4"))
+                uploads.append(.file(.audioNote, data, filename: "voice-note.m4a", mimeType: "audio/mp4"))
             }
         }
         let input = ReportInput(
@@ -400,6 +558,11 @@ final class WidgetModel: ObservableObject {
         }
         draft = nil
         clearNotes()
+        // A clip that didn't upload stays on disk for Retry.
+        if let clip, !failed.contains(where: { if case .video = $0 { return true } else { return false } }) {
+            try? FileManager.default.removeItem(at: clip.url)
+        }
+        clip = nil
         withAnimation(.easeOut(duration: 0.2)) {
             screen = .sent(.init(taskId: report.bugTaskId, held: report.held ?? false, failed: failed))
             detent = .medium
@@ -417,10 +580,10 @@ final class WidgetModel: ObservableObject {
     private func attachments(_ d: ShotDraft) -> [PendingUpload] {
         var out: [PendingUpload] = []
         if let png = d.flattened().pngData() {
-            out.append(.init(kind: .annotatedScreenshot, data: png, filename: "annotated-screenshot.png", mimeType: "image/png"))
+            out.append(.file(.annotatedScreenshot, png, filename: "annotated-screenshot.png", mimeType: "image/png"))
         }
         if out.isEmpty || (d.isPartial && d.includeFull), let jpeg = d.image.jpegData(compressionQuality: 0.85) {
-            out.append(.init(kind: .screenshot, data: jpeg, filename: "screenshot.jpg", mimeType: "image/jpeg"))
+            out.append(.file(.screenshot, jpeg, filename: "screenshot.jpg", mimeType: "image/jpeg"))
         }
         return out
     }
@@ -429,13 +592,30 @@ final class WidgetModel: ObservableObject {
     private func upload(_ u: PendingUpload, taskId: Int) async -> Bool {
         for attempt in 0..<2 {
             do {
-                _ = try await client.uploadAttachment(taskId: taskId, kind: u.kind, data: u.data, filename: u.filename, mimeType: u.mimeType)
+                switch u {
+                case let .file(kind, data, filename, mimeType):
+                    _ = try await client.uploadAttachment(taskId: taskId, kind: kind, data: data, filename: filename, mimeType: mimeType)
+                case let .video(clip, trim):
+                    _ = try await uploadVideo(clip, trim: trim, taskId: taskId)
+                }
                 return true
             } catch {
                 if attempt == 0 { try? await Task.sleep(nanoseconds: 800_000_000) }
             }
         }
         return false
+    }
+
+    /// Presign, PUT from disk, then record it on the task. A retry mints a new
+    /// object key, so a repeated PUT never overwrites. Returns the attachment id.
+    private func uploadVideo(_ clip: VideoClip, trim: ClosedRange<Double>?, taskId: Int) async throws -> Int {
+        let p = try await client.presignDemoVideo(taskId: taskId, filename: clip.filename, mimeType: clip.mimeType, sizeBytes: clip.sizeBytes)
+        try await client.put(fileAt: clip.url, to: p.uploadUrl, mimeType: clip.mimeType)
+        let tenth = { (v: Double) in (v * 10).rounded() / 10 }
+        let rec = try await client.recordDemoVideo(taskId: taskId, objectKey: p.objectKey, filename: clip.filename, mimeType: clip.mimeType,
+                                                   durationSec: clip.duration.rounded(), trimStart: trim.map { tenth($0.lowerBound) },
+                                                   trimEnd: trim.map { tenth($0.upperBound) })
+        return rec.id
     }
 
     func retryUpload(_ result: SentResult) async {
