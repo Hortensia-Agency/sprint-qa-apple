@@ -33,8 +33,12 @@ public enum SprintQA {
         }
     }
 
+    /// This package's version, sent in each report's user agent.
+    public static let version = "0.2.0"
+
     static private(set) var configuration: Configuration?
     static private(set) var client: SprintQAClient?
+    static private(set) var model: WidgetModel?
     static let storage = WidgetStorage()
 
     /// Colors, icon, sizes, fonts and text, changeable from code at any time.
@@ -46,19 +50,40 @@ public enum SprintQA {
             print("[SprintQA] no widget key (pk_qa_…); the widget stays off.")
             return
         }
+        guard model == nil else { return }
         self.configuration = configuration
-        client = SprintQAClient(origin: configuration.origin, widgetKey: configuration.widgetKey, pat: storage.pat)
+        let client = SprintQAClient(origin: configuration.origin, widgetKey: configuration.widgetKey, pat: storage.pat)
+        self.client = client
+        let model = WidgetModel(configuration: configuration, client: client, storage: storage, style: style)
+        model.route = pendingRoute
+        self.model = model
+        Task { await model.start() }
     }
 
+    private static var pendingRoute: String?
+
     /// The screen the person is on, matched against the project's hidden
-    /// routes and sent with each report.
-    public static var route: String?
+    /// routes and sent with each report. Set it as screens appear.
+    public static var route: String? {
+        get { model?.route ?? pendingRoute }
+        set {
+            pendingRoute = newValue
+            model?.route = newValue
+        }
+    }
 
     /// The person's own choice to hide the bubble on this device. A host's
-    /// settings switch reads and sets it.
+    /// settings switch reads and sets it; the bubble shows or hides at once.
     public static var isHidden: Bool {
-        get { storage.hidden }
-        set { storage.hidden = newValue }
+        get { model?.hidden ?? storage.hidden }
+        set {
+            if let model { model.setHidden(newValue) } else { storage.hidden = newValue }
+        }
+    }
+
+    /// Opens the report sheet, e.g. from the host's own "Report a problem" button.
+    public static func open() {
+        model?.open()
     }
 
     public static var isSignedIn: Bool { client?.hasPat ?? false }
@@ -68,7 +93,7 @@ public enum SprintQA {
     /// closed the sheet.
     @discardableResult
     public static func signIn() async -> String? {
-        let strings = Palette(style: style, appearance: nil).strings
+        let strings = (model?.palette ?? Palette(style: style, appearance: nil)).strings
         guard let configuration, let client else { return strings(.reportingOff) }
         let outcome = await SignInSession().run(
             client: client, widgetKey: configuration.widgetKey,

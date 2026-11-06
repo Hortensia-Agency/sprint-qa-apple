@@ -152,6 +152,8 @@ public enum StringKey: String, CaseIterable, Sendable {
     case verdictFailed
     case previous
     case next
+    case attachmentUploadFailed
+    case retry
 }
 
 extension StringKey {
@@ -305,5 +307,7 @@ extension StringKey {
         .verdictFailed: "Couldn't record your verdict.",
         .previous: "Previous",
         .next: "Next",
+        .attachmentUploadFailed: "Ticket filed, 1 attachment didn't upload.",
+        .retry: "Retry",
     ]
 }
