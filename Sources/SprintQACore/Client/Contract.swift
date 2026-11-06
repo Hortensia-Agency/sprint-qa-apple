@@ -172,20 +172,66 @@ public struct QueueResponse: Decodable, Sendable {
 /// POST /api/widget/report
 public struct ReportInput: Encodable, Sendable {
     public struct AutoContext: Encodable, Sendable {
-        public struct Viewport: Encodable, Sendable {
+        public struct Size: Encodable, Equatable, Sendable {
             public var w: Int
             public var h: Int
+            public init(w: Int, h: Int) {
+                self.w = w
+                self.h = h
+            }
         }
-        public var viewport: Viewport?
+        /// Sprint's DiagnosticContext (lib/signals/context.ts), the fields a phone knows.
+        public struct Env: Encodable, Equatable, Sendable {
+            public var platform = "ios"
+            public var osName: String?
+            public var osVersion: String?
+            public var appVersion: String?
+            public var deviceModel: String?
+            public var timezone: String?
+            public var utcOffset: Int?
+            public var locale: String?
+            public var viewport: Size?
+            public var screen: Size?
+            public var handled = true
+            public init(osName: String? = nil, osVersion: String? = nil, appVersion: String? = nil, deviceModel: String? = nil, timezone: String? = nil, utcOffset: Int? = nil, locale: String? = nil, viewport: Size? = nil, screen: Size? = nil) {
+                self.osName = osName
+                self.osVersion = osVersion
+                self.appVersion = appVersion
+                self.deviceModel = deviceModel
+                self.timezone = timezone
+                self.utcOffset = utcOffset
+                self.locale = locale
+                self.viewport = viewport
+                self.screen = screen
+            }
+        }
+        /// The screen the app was on, e.g. "Checkout/Payment".
+        public var route: String?
+        public var viewport: Size?
         public var userAgent: String?
         public var consoleErrors: [String]?
+        public var env: Env?
+        public init(route: String? = nil, viewport: Size? = nil, userAgent: String? = nil, consoleErrors: [String]? = nil, env: Env? = nil) {
+            self.route = route
+            self.viewport = viewport
+            self.userAgent = userAgent
+            self.consoleErrors = consoleErrors
+            self.env = env
+        }
     }
     public var title: String
     public var description: String?
     public var severity: Severity?
-    /// http(s) only; the server refuses anything else.
+    /// http(s) only; the server refuses anything else, so app screens go in autoContext.route.
     public var reproUrl: String?
     public var autoContext: AutoContext?
+
+    public init(title: String, description: String? = nil, severity: Severity? = nil, autoContext: AutoContext? = nil) {
+        self.title = title
+        self.description = description
+        self.severity = severity
+        self.autoContext = autoContext
+    }
 }
 
 public struct ReportResponse: Decodable, Sendable {
