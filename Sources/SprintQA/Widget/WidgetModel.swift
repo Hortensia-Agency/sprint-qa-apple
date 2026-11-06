@@ -16,6 +16,8 @@ enum SheetScreen: Equatable {
 enum RecordTarget: Equatable {
     case bug
     case demo
+    /// A demo of the fix, attached to a task from its detail.
+    case task(Int)
 }
 
 /// The full-screen steps of a capture, drawn over the host app.
@@ -28,6 +30,7 @@ enum CaptureStage: Equatable {
 
 enum SheetTab: Hashable {
     case report
+    case queue
     case demo
 }
 
@@ -87,6 +90,15 @@ final class WidgetModel: ObservableObject {
     @Published var demo = DemoDraft()
     @Published var withMic = false
     @Published var drawingOnScreen = false
+    @Published var openTask: Int? {
+        didSet {
+            detailNotice = nil
+            if openTask != nil { detent = .large }
+        }
+    }
+    @Published var detailNotice: String?
+    /// Bumped to make an open task detail load again.
+    @Published var detailReload = 0
 
     weak var window: OverlayWindow?
     var layout: BubbleLayout?
@@ -507,6 +519,12 @@ final class WidgetModel: ObservableObject {
                 }
                 screen = .review
                 detent = .large
+            case .task(let id):
+                tab = .queue
+                openTask = id
+                screen = .launcher
+                detent = .large
+                Task { await self.attachDemo(recorded, to: id) }
             case .demo:
                 if let old = demo.clip { try? FileManager.default.removeItem(at: old.url) }
                 demo.clip = recorded
@@ -516,6 +534,20 @@ final class WidgetModel: ObservableObject {
             }
             present()
         }
+    }
+
+    /// Uploads a demo of the fix to a task, reporting progress on its detail.
+    func attachDemo(_ clip: VideoClip, to taskId: Int) async {
+        let t = palette.strings
+        detailNotice = t(.demoUploading)
+        do {
+            _ = try await uploadVideo(clip, trim: nil, taskId: taskId)
+            detailNotice = t(.demoAttached)
+            detailReload += 1
+        } catch {
+            detailNotice = t(.videoUploadFailedShort)
+        }
+        try? FileManager.default.removeItem(at: clip.url)
     }
 
     /// Adds the walkthrough to the project's demo library. Nil on success.

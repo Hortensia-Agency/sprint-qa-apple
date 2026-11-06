@@ -169,6 +169,54 @@ public struct QueueResponse: Decodable, Sendable {
     public var blocked: Bool
 }
 
+/// GET /api/widget/tasks/:id, the fields the widget shows.
+public struct TaskDetail: Decodable, Sendable {
+    public struct Task: Decodable, Sendable {
+        public var id: Int
+        public var title: String
+        public var state: String
+        public var description: String?
+    }
+
+    public struct Person: Decodable, Sendable {
+        public var name: String
+    }
+
+    public struct Media: Decodable, Identifiable, Sendable {
+        public var id: Int
+        public var filename: String
+        public var url: String?
+    }
+
+    public struct Transcript: Decodable, Sendable {
+        public var state: String
+        public var text: String?
+        public var parkReason: String?
+        public var failedReason: String?
+    }
+
+    public struct AudioNote: Decodable, Identifiable, Sendable {
+        public var id: Int
+        public var filename: String
+        public var url: String
+        /// Absent on servers older than transcription.
+        public var transcript: Transcript?
+    }
+
+    public struct Repro: Decodable, Sendable {
+        public var staleEnvRetest: Bool?
+        public var staleEnvRetestReason: String?
+    }
+
+    public var task: Task
+    public var activeVerifiedCount: Int
+    public var fixer: Person?
+    public var screenshots: [Media]?
+    public var audioNotes: [AudioNote]?
+    public var demoVideos: [Media]?
+    public var reproContext: Repro?
+}
+
 /// POST /api/widget/report
 public struct ReportInput: Encodable, Sendable {
     public struct AutoContext: Encodable, Sendable {

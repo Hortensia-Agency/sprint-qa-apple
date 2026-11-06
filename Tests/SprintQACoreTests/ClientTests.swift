@@ -105,3 +105,27 @@ private func fixture(_ name: String) throws -> Data {
     let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
     return try Data(contentsOf: dir.appendingPathComponent("Fixtures/\(name).json"))
 }
+
+final class TaskDetailDecodingTests: XCTestCase {
+    /// The shape GET /api/widget/tasks/:id answers with, trimmed to what the widget reads plus extras it must ignore.
+    func testDecodesTheDetailRoute() throws {
+        let json = """
+        {"task":{"id":41,"title":"Wrong coach","state":"deployed","description":null,"projectId":6,"tenantId":"t"},
+         "transitions":[],"comments":[],"verifications":[],"activeVerifiedCount":1,
+         "fixer":{"name":"Ada","login":"ada","avatar":null,"via":"commit"},
+         "screenshots":[{"id":1,"filename":"annotated-screenshot.png","url":"https://s/1"}],
+         "audioNotes":[{"id":2,"filename":"voice-note.m4a","mimeType":"audio/mp4","url":"https://s/2",
+           "transcript":{"state":"parked","text":null,"parkReason":"over_cap","failedReason":null}}],
+         "demoVideos":[{"id":3,"filename":"demo.mp4","mimeType":"video/mp4","url":"https://s/3"}],
+         "reproContext":{"reproUrl":null,"bugBuildSha":null,"fixBranch":"main","fixCommitSha":"abc","staleEnvRetest":true,"staleEnvRetestReason":null}}
+        """
+        let d = try JSONDecoder().decode(TaskDetail.self, from: Data(json.utf8))
+        XCTAssertEqual(d.task.title, "Wrong coach")
+        XCTAssertNil(d.task.description)
+        XCTAssertEqual(d.activeVerifiedCount, 1)
+        XCTAssertEqual(d.fixer?.name, "Ada")
+        XCTAssertEqual(d.audioNotes?.first?.transcript?.parkReason, "over_cap")
+        XCTAssertEqual(d.demoVideos?.first?.url, "https://s/3")
+        XCTAssertEqual(d.reproContext?.staleEnvRetest, true)
+    }
+}

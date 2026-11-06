@@ -55,6 +55,12 @@ public final class SprintQAClient: @unchecked Sendable {
         try await send("/api/widget/report", method: "POST", json: input)
     }
 
+    /// What a tester needs to verify a fix: the task, who fixed it, and the
+    /// screenshots, voice notes and demo videos it carries.
+    public func taskDetail(taskId: Int) async throws -> TaskDetail {
+        try await send("/api/widget/tasks/\(taskId)")
+    }
+
     public func take(taskId: Int) async throws {
         let _: Empty = try await send("/api/widget/tasks/\(taskId)/take", method: "POST")
     }

@@ -183,6 +183,7 @@ struct LauncherScreen: View {
             if !model.reportOnly {
                 Picker("", selection: $model.tab) {
                     Text(t(.tabReport)).tag(SheetTab.report)
+                    Text(t(.tabQueue)).tag(SheetTab.queue)
                     Text(t(.tabDemo)).tag(SheetTab.demo)
                 }
                 .pickerStyle(.segmented)
@@ -193,6 +194,12 @@ struct LauncherScreen: View {
                 Group {
                     if model.tab == .demo && !model.reportOnly {
                         DemoScreen(model: model, palette: palette)
+                    } else if model.tab == .queue && !model.reportOnly {
+                        if let id = model.openTask {
+                            DetailScreen(model: model, palette: palette, taskId: id)
+                        } else {
+                            QueueScreen(model: model, palette: palette)
+                        }
                     } else {
                         report
                     }
@@ -677,14 +684,7 @@ struct SeverityPicker: View {
         }
     }
 
-    private func color(_ s: Severity) -> Color {
-        switch s {
-        case .low: return palette.color(.subtleForeground)
-        case .medium: return palette.color(.warning)
-        case .high: return palette.color(.destructive).opacity(0.65)
-        case .blocker: return palette.color(.destructive)
-        }
-    }
+    private func color(_ s: Severity) -> Color { palette.severity(s) }
 }
 
 // MARK: Sent
