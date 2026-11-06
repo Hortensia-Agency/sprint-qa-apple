@@ -226,7 +226,7 @@ extension StringKey {
         .take: "Take",
         .bugFound: "Bug found",
         .verify: "Verify",
-        .voiceNoteNoPlayer: "Voice note (install expo-av to play)",
+        .voiceNoteNoPlayer: "Voice note (install expo-audio to play)",
         .pauseVoiceNote: "Pause voice note",
         .playVoiceNote: "Play voice note",
         .transcriptOff: "Not transcribed: transcription is off for this workspace.",
