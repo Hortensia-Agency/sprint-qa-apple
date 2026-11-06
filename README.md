@@ -44,6 +44,35 @@ SprintQA.route = "Checkout"
 
 The token is stored in the Keychain for this device only. `SprintQA.signOut()` forgets it.
 
+## Customize
+
+Every color, the bubble, corners, font and text come from `SprintQA.style`. Set values whenever you like, at launch, from a settings screen or from remote config; anything on screen redraws. What you set wins over the project's Appearance settings in Sprint, which win over Sprint's own look.
+
+```swift
+let style = SprintQA.style
+style.accent = UIColor(sprintQAHex: "#1F6FEB")            // the accent family, with readable text picked for it
+style.colors[.primary] = .sprintQA(light: .black, dark: .white)
+style.colors[.bgElev1] = UIColor { $0.userInterfaceStyle == .dark ? .black : .white }   // any dynamic UIColor
+style.set(.indigo, for: .ring)                             // or a SwiftUI Color
+
+style.bubble.icon = .image(UIImage(named: "FeedbackIcon")!)   // .symbol("flag.fill"), .url(logoURL)
+style.bubble.background = .black
+style.bubble.foreground = .white
+style.bubble.size = 52
+style.bubble.side = .leading
+style.bubble.label = "Feedback"
+
+style.radius = .init(small: 6, medium: 10, large: 16)
+style.fontFamily = "Avenir Next"                           // scaled with Dynamic Type
+style.colorScheme = .dark                                  // .light, .dark or .system
+style.strings[.submit] = "Send to the team"
+style.title = "Atlas feedback"
+style.hiddenRoutes = ["Payment*"]
+style.reset()                                              // back to the project's look
+```
+
+Token names are Sprint's (`Token.allCases`): background, bgElev1, foreground, mutedForeground, primary, signal, destructive, border and the rest.
+
 ## Develop
 
 ```

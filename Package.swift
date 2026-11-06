@@ -24,5 +24,7 @@ let package = Package(
         .target(name: "SprintQACore", path: "Sources/SprintQACore"),
         .target(name: "SprintQA", dependencies: ["SprintQACore"], path: "Sources/SprintQA"),
         .testTarget(name: "SprintQACoreTests", dependencies: ["SprintQACore"], path: "Tests/SprintQACoreTests"),
+        // iOS only; run with xcodebuild on a simulator. Empty under `swift test` on a Mac.
+        .testTarget(name: "SprintQATests", dependencies: ["SprintQA"], path: "Tests/SprintQATests"),
     ]
 )

@@ -16,29 +16,29 @@ public enum SprintQA {
         /// URLs in Sprint (for example `tapinn`). Sign-in returns to it.
         public var redirectScheme: String
         public var origin: URL
-        /// The look set in code; wins over the project's Appearance settings.
+        /// A look Sprint checks (for example the accent's contrast) before
+        /// applying, in the same form as the project's Appearance settings.
+        /// For values set and changed from code at any time, use `SprintQA.style`.
         public var appearance: AppearanceOverride?
-        /// The host's own text, by `StringKey` raw value, plus "title" and "intro".
-        public var strings: [String: String]
-        public var rightToLeft: Bool?
 
         public init(
             widgetKey: String, enabled: Bool, redirectScheme: String, origin: URL = defaultOrigin,
-            appearance: AppearanceOverride? = nil, strings: [String: String] = [:], rightToLeft: Bool? = nil
+            appearance: AppearanceOverride? = nil
         ) {
             self.widgetKey = widgetKey
             self.enabled = enabled
             self.redirectScheme = redirectScheme
             self.origin = origin
             self.appearance = appearance
-            self.strings = strings
-            self.rightToLeft = rightToLeft
         }
     }
 
     static private(set) var configuration: Configuration?
     static private(set) var client: SprintQAClient?
     static let storage = WidgetStorage()
+
+    /// Colors, icon, sizes, fonts and text, changeable from code at any time.
+    public static let style = SprintQAStyle()
 
     public static func configure(_ configuration: Configuration) {
         guard configuration.enabled else { return }
@@ -68,7 +68,8 @@ public enum SprintQA {
     /// closed the sheet.
     @discardableResult
     public static func signIn() async -> String? {
-        guard let configuration, let client else { return Strings()(.reportingOff) }
+        let strings = Palette(style: style, appearance: nil).strings
+        guard let configuration, let client else { return strings(.reportingOff) }
         let outcome = await SignInSession().run(
             client: client, widgetKey: configuration.widgetKey,
             scheme: configuration.redirectScheme, deviceId: storage.deviceId
@@ -82,17 +83,8 @@ public enum SprintQA {
             if code == "exchange_failed" || code.hasPrefix("bad") {
                 print("[SprintQA] sign-in refused (\(code)). Check that \"\(configuration.redirectScheme)://\" is in the project's QA URLs.")
             }
-            return SignIn.message(for: code).map { Strings(host: configuration.strings)($0) }
+            return SignIn.message(for: code).map { strings($0) }
         }
-    }
-
-    /// Accepts a token pasted from the team, the fallback to signing in.
-    public static func usePastedToken(_ token: String) -> Bool {
-        let t = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isPatShape(t), let client else { return false }
-        storage.pat = t
-        client.pat = t
-        return true
     }
 
     public static func signOut() {

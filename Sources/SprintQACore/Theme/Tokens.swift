@@ -2,6 +2,43 @@
 // tokens.json is Sprint's app/globals.css as bare HSL triples; Sprint's
 // tests/surface-tokens.test.ts holds it to the web values.
 
+/// Every color the widget draws, by Sprint's token name.
+public enum Token: String, CaseIterable, Sendable {
+    case background = "background"
+    case bgElev1 = "bg-elev-1"
+    case bgElev2 = "bg-elev-2"
+    case bgHover = "bg-hover"
+    case border = "border"
+    case borderStrong = "border-strong"
+    case destructive = "destructive"
+    case destructiveForeground = "destructive-foreground"
+    case destructiveSoft = "destructive-soft"
+    case foreground = "foreground"
+    case input = "input"
+    case mutedForeground = "muted-foreground"
+    case primary = "primary"
+    case primaryForeground = "primary-foreground"
+    case ring = "ring"
+    case scrim = "scrim"
+    case signal = "signal"
+    case signalForeground = "signal-foreground"
+    case signalSoft = "signal-soft"
+    case signalStrong = "signal-strong"
+    case stateBacklog = "state-backlog"
+    case stateBlocked = "state-blocked"
+    case stateCanceled = "state-canceled"
+    case stateDeployed = "state-deployed"
+    case stateDone = "state-done"
+    case stateInProgress = "state-in_progress"
+    case stateInQa = "state-in_qa"
+    case stateReadyForQa = "state-ready_for_qa"
+    case subtleForeground = "subtle-foreground"
+    case success = "success"
+    case successSoft = "success-soft"
+    case warning = "warning"
+    case warningSoft = "warning-soft"
+}
+
 public enum Tokens {
     public static let light: [String: String] = [
         "background": "210 12% 96.9%",

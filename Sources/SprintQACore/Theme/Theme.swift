@@ -25,7 +25,23 @@ public struct RGBA: Equatable, Sendable {
         self.a = a
     }
 
+    /// "#1F6FEB", "1F6FEB", "#1F6FEBCC" or the short "#16E". Nil for anything else.
+    public init?(hex: String) {
+        var h = hex.trimmingCharacters(in: .whitespaces)
+        if h.hasPrefix("#") { h.removeFirst() }
+        if h.count == 3 || h.count == 4 { h = h.map { "\($0)\($0)" }.joined() }
+        guard h.count == 6 || h.count == 8, let v = UInt64(h, radix: 16) else { return nil }
+        let n = h.count == 8 ? v : (v << 8) | 0xFF
+        self.init(r: Double((n >> 24) & 0xFF) / 255, g: Double((n >> 16) & 0xFF) / 255, b: Double((n >> 8) & 0xFF) / 255, a: Double(n & 0xFF) / 255)
+    }
+
     public func opacity(_ a: Double) -> RGBA { RGBA(r: r, g: g, b: b, a: a) }
+
+    /// WCAG relative luminance, for picking readable text on a color.
+    public var luminance: Double {
+        func lin(_ c: Double) -> Double { c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+        return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+    }
 }
 
 /// The widget's colors and corners for one appearance, with the project's
@@ -57,6 +73,8 @@ public struct Theme: Equatable, Sendable {
         default: return systemDark
         }
     }
+
+    public subscript(_ token: Token) -> RGBA { self[token.rawValue] }
 
     public subscript(_ token: String) -> RGBA {
         colors[token] ?? colors["foreground"] ?? RGBA(r: 0, g: 0, b: 0)

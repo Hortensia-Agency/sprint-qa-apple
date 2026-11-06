@@ -20,6 +20,11 @@ public struct WidgetAppearance: Codable, Equatable, Sendable {
         public var sm: Double
         public var md: Double
         public var lg: Double
+        public init(sm: Double, md: Double, lg: Double) {
+            self.sm = sm
+            self.md = md
+            self.lg = lg
+        }
     }
     public struct ThemeTokens: Codable, Equatable, Sendable {
         public var light: [String: String]
