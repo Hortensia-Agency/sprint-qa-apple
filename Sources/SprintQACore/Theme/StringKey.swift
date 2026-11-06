@@ -14,10 +14,6 @@ public enum StringKey: String, CaseIterable, Sendable {
     case signInTitle
     case signInBody
     case signIn
-    case pasteTokenLink
-    case pasteTokenBody
-    case token
-    case connect
     case signInNotMember
     case reportingOff
     case signInIncomplete
@@ -169,12 +165,8 @@ extension StringKey {
         .tabReport: "Report",
         .tabQueue: "Queue",
         .signInTitle: "Sign in to report a problem",
-        .signInBody: "Sign in so the team can follow up on what you send. You only do this once on this device.",
-        .signIn: "Sign in",
-        .pasteTokenLink: "Have a token from the team? Paste it",
-        .pasteTokenBody: "Paste the token the team gave you. You only do this once on this device.",
-        .token: "Token",
-        .connect: "Connect",
+        .signInBody: "Use your Sprint account, or create one on the next screen. You only do this once on this device.",
+        .signIn: "Continue with Sprint",
         .signInNotMember: "This account can't report on this project. Ask the team that sent you here for access.",
         .reportingOff: "Reporting is turned off for this app right now.",
         .signInIncomplete: "Sign-in didn't complete. Please try again.",
