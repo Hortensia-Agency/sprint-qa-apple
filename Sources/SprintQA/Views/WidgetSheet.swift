@@ -411,7 +411,7 @@ struct DemoScreen: View {
             Task {
                 let picked = try? await item.loadTransferable(type: PickedMovie.self)
                 let clip = await picked.asyncMap { await VideoClip.from($0.url) } ?? nil
-                guard let clip, clip.sizeBytes <= VideoClip.maxBytes else {
+                guard let clip, clip.sizeBytes <= model.videoCap else {
                     message = (t(.videoPickFailed), false)
                     return
                 }

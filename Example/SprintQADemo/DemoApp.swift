@@ -17,6 +17,7 @@ struct DemoApp: App {
             origin: URL(string: env["SPRINT_ORIGIN"] ?? saved.string(forKey: "SPRINT_ORIGIN") ?? "http://localhost:3001")!
         ))
         if CommandLine.arguments.contains("-reset") { SprintQA.signOut() }
+        if CommandLine.arguments.contains("-rtl") { SprintQA.style.rightToLeft = true }
     }
 
     var body: some Scene {

@@ -177,6 +177,11 @@ final class WidgetModel: ObservableObject {
         }
     }
 
+    var isReporter: Bool { me?.role == "reporter" }
+
+    /// What Sprint accepts for one video from this person.
+    var videoCap: Int { isReporter ? VideoClip.reporterMaxBytes : VideoClip.maxBytes }
+
     /// Reporters and clients get the report form alone; unknown identity counts as one.
     var reportOnly: Bool {
         guard let me else { return true }
@@ -433,7 +438,7 @@ final class WidgetModel: ObservableObject {
     }
 
     func useVideo(_ picked: VideoClip?) {
-        guard let picked, picked.sizeBytes <= VideoClip.maxBytes else {
+        guard let picked, picked.sizeBytes <= videoCap else {
             launcherMessage = palette.strings(.videoPickFailed)
             return
         }
@@ -462,7 +467,7 @@ final class WidgetModel: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 do {
-                    try await self.recorder.start(withMic: self.withMic && VoiceRecorder.available)
+                    try await self.recorder.start(withMic: self.withMic && VoiceRecorder.available, compact: self.isReporter)
                 } catch {
                     self.launcherMessage = self.palette.strings(.captureBlocked)
                     self.present()
@@ -482,9 +487,18 @@ final class WidgetModel: ObservableObject {
             debugCapture = DebugCapture(sprintOrigin: client.origin)
             if let route { debugCapture?.log.navigation(route) }
         }
-        capture = .recording(target, startedAt: Date())
+        let started = Date()
+        capture = .recording(target, startedAt: started)
         // The host keeps its keyboard while it is recorded.
         previousKeyWindow?.makeKey()
+        if isReporter {
+            // Two minutes at the compact rate stay under a reporter's cap.
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 120 * 1_000_000_000)
+                guard let self, case .recording(_, let at) = self.capture, at == started else { return }
+                self.stopRecording()
+            }
+        }
     }
 
     func cancelCountdown() {

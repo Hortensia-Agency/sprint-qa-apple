@@ -331,7 +331,7 @@ struct DetailScreen: View {
         attaching = true
         defer { attaching = false }
         let picked = try? await item.loadTransferable(type: PickedMovie.self)
-        guard let url = picked?.url, let clip = await VideoClip.from(url), clip.sizeBytes <= VideoClip.maxBytes else {
+        guard let url = picked?.url, let clip = await VideoClip.from(url), clip.sizeBytes <= model.videoCap else {
             model.detailNotice = palette.strings(.videoPickFailed)
             return
         }
@@ -474,6 +474,7 @@ struct Lightbox: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            .environment(\.layoutDirection, .leftToRight)
             if items.count > 1 {
                 CaptureBar {
                     CapturePill(title: t(.previous)) { withAnimation(.easeOut(duration: 0.2)) { index = (index - 1 + items.count) % items.count } }

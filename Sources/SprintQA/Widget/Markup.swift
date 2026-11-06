@@ -103,6 +103,7 @@ struct MarkedShot: View {
         }
         .aspectRatio(crop.width / crop.height, contentMode: .fit)
         .clipped()
+        .environment(\.layoutDirection, .leftToRight)
     }
 }
 #endif

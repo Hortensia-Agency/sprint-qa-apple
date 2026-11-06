@@ -14,6 +14,8 @@ struct VideoClip: Equatable {
 
     /// Sprint's cap for a demo video.
     static let maxBytes = 150 * 1024 * 1024
+    /// Sprint's cap for anything a widget reporter uploads.
+    static let reporterMaxBytes = 20 * 1024 * 1024
 
     static func from(_ url: URL) async -> VideoClip? {
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
@@ -57,17 +59,21 @@ final class ScreenRecorder: @unchecked Sendable {
     private var video: AVAssetWriterInput?
     private var audio: AVAssetWriterInput?
     private var withMic = false
+    private var compact = false
     private var armed = false
     private var started = false
     private var first = CMTime.zero
     private var last = CMTime.zero
 
-    func start(withMic: Bool) async throws {
+    /// `compact` records smaller (1280 points on the long side, 1.2 Mbps) so a
+    /// reporter's two minutes fit their 20 MB upload cap.
+    func start(withMic: Bool, compact: Bool) async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("sprintqa-recording-\(UUID().uuidString).mp4")
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         queue.sync {
             self.writer = writer
             self.withMic = withMic
+            self.compact = compact
             self.armed = false
             self.started = false
         }
@@ -135,13 +141,13 @@ final class ScreenRecorder: @unchecked Sendable {
             // The writer starts on the first video frame, sized from it.
             guard type == .video, let format = CMSampleBufferGetFormatDescription(buffer) else { return }
             let dims = CMVideoFormatDescriptionGetDimensions(format)
-            let scale = min(1, 1920 / Double(max(dims.width, dims.height)))
+            let scale = min(1, (compact ? 1280 : 1920) / Double(max(dims.width, dims.height)))
             let even = { (v: Int32) in Int(Double(v) * scale) / 2 * 2 }
             let v = AVAssetWriterInput(mediaType: .video, outputSettings: [
                 AVVideoCodecKey: AVVideoCodecType.h264,
                 AVVideoWidthKey: even(dims.width),
                 AVVideoHeightKey: even(dims.height),
-                AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 5_000_000],
+                AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: compact ? 1_200_000 : 5_000_000],
             ])
             v.expectsMediaDataInRealTime = true
             guard w.canAdd(v) else { return }

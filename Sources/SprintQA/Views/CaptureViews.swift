@@ -55,6 +55,7 @@ struct AreaSelectView: View {
                 .onAppear { canvas = geo.size }
                 .onChange(of: geo.size) { canvas = $0 }
             }
+            .environment(\.layoutDirection, .leftToRight)
             .ignoresSafeArea()
             .accessibilityHidden(true)
 
@@ -202,6 +203,7 @@ struct MarkupEditor: View {
                     .overlay(alignment: .topLeading) { typingField(scale: scale) }
                     .contentShape(Rectangle())
                     .gesture(draw(scale: scale))
+                    .environment(\.layoutDirection, .leftToRight)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityElement()
                     .accessibilityLabel(t(.reviewScreenshot))
@@ -451,6 +453,7 @@ private struct DrawOnScreen: View {
                         current = nil
                     }
             )
+            .environment(\.layoutDirection, .leftToRight)
             CaptureBar {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 0) {

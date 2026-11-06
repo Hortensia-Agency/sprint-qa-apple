@@ -29,6 +29,8 @@ struct VideoReview: View {
             TrimTrack(palette: palette, duration: clip.duration, trim: $trim) { start in
                 player.seek(to: CMTime(seconds: start, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
             }
+            // A clip's timeline runs left to right in any language.
+            .environment(\.layoutDirection, .leftToRight)
         }
         .onDisappear { player.pause() }
     }
