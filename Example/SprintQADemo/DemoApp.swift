@@ -26,18 +26,37 @@ struct DemoApp: App {
 
 struct DemoView: View {
     @State private var status = SprintQA.isSignedIn ? "Signed in" : "Signed out"
+    @State private var showBubble = !SprintQA.isHidden
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text(status).accessibilityIdentifier("status")
-            Button("Sign in with Sprint") {
-                Task {
-                    let failure = await SprintQA.signIn()
-                    status = failure ?? (SprintQA.isSignedIn ? "Signed in" : "Signed out")
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent("Lesson", value: "Morning lesson")
+                    LabeledContent("Coach", value: "Idris")
+                    LabeledContent("Total", value: "65 TND")
+                }
+                Section("QA widget") {
+                    Toggle("Show the report button", isOn: $showBubble)
+                        .onChange(of: showBubble) { SprintQA.isHidden = !$0 }
+                    Button("Report a problem") { SprintQA.open() }
+                    Button("Sign in with Sprint") {
+                        Task {
+                            let failure = await SprintQA.signIn()
+                            status = failure ?? (SprintQA.isSignedIn ? "Signed in" : "Signed out")
+                        }
+                    }
+                    Text(status).accessibilityIdentifier("status")
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .navigationTitle("Book a lesson")
+            .onAppear {
+                SprintQA.route = "BookLesson"
+                // For screenshots without UI automation: open the sheet on launch.
+                if CommandLine.arguments.contains("-open") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { SprintQA.open() }
+                }
+            }
         }
-        .padding()
     }
 }
